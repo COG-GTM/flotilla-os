@@ -21,6 +21,16 @@ flotilla_mode: test
 http_server_cors_allowed_origins:
   - http://localhost:3001
 http_server_listen_address: :3000
+# API authentication. Each entry: <identity>:<role>[+<role>...]:<sha256 hex of the API key>.
+# Roles: user (read, definitions, templates, launch/stop runs), operator (clusters, workers),
+# worker (PUT /{run_id}/status). Supply via HTTP_SERVER_API_KEYS (comma separated) in deployments.
+# The server refuses to start with no keys unless http_server_auth_disabled is true.
+http_server_api_keys: []
+http_server_auth_disabled: false
+# Service accounts callers may request in addition to eks/emr_default_service_account.
+allowed_service_accounts: []
+# When non-empty, definition and template images must start with one of these registries.
+allowed_image_registries: []
 http_server_read_timeout_seconds: 5
 http_server_write_timeout_seconds: 10
 logs_client: cloudwatch
