@@ -1,9 +1,10 @@
-FROM node:carbon
+FROM node:22-alpine
 WORKDIR /usr/src/app
-ADD . /usr/src/app
+COPY package.json package-lock.json ./
+RUN npm ci
 RUN npm install -g serve
-RUN npm install
+COPY . .
 ARG FLOTILLA_API
 ARG DEFAULT_CLUSTER
 RUN npm run build
-ENTRYPOINT serve -s build
+ENTRYPOINT ["serve", "-s", "build"]

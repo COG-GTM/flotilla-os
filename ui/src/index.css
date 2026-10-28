@@ -153,7 +153,7 @@ body {
   margin-bottom: 8px;
 }
 
-.flotilla-env-field-array-item > .bp3-form-group {
+.flotilla-env-field-array-item > .bp5-form-group {
   flex: 1;
   margin-right: var(--spacing);
   margin-bottom: 0;
@@ -179,15 +179,15 @@ body {
   margin-right: 0;
 }
 
-.flotilla-list-utils-container .bp3-form-group {
+.flotilla-list-utils-container .bp5-form-group {
   flex: 1;
 }
 
-.flotilla-list-utils-container .bp3-input {
+.flotilla-list-utils-container .bp5-input {
   width: 100%;
 }
 
-.flotilla-list-utils-container .bp3-button {
+.flotilla-list-utils-container .bp5-button {
   transform: translateY(-7px);
 }
 
@@ -196,7 +196,7 @@ body {
 }
 
 .flotilla-list-filters-card > *,
-.flotilla-list-filters-card .bp3-input {
+.flotilla-list-filters-card .bp5-input {
   width: 100%;
 }
 
@@ -325,8 +325,8 @@ table {
 }
 
 .flotilla-ansi,
-.bp3-code-block,
-.bp3-code {
+.bp5-code-block,
+.bp5-code {
   font-family: "Roboto Mono", "Courier New", Courier, monospace !important;
   font-size: 0.9rem;
   white-space: pre-wrap;
@@ -349,44 +349,44 @@ table {
 /**
  * Blueprint overrides
  */
-.bp3-input {
+.bp5-input {
   height: 36px;
 }
-.bp3-form-group {
+.bp5-form-group {
   margin-bottom: 28px;
 }
-.bp3-form-group:last-child {
+.bp5-form-group:last-child {
   margin-bottom: 0;
 }
-.bp3-form-group input,
-.bp3-form-group textarea {
+.bp5-form-group input,
+.bp5-form-group textarea {
   width: 100%;
   border: 2px solid #293742;
 }
 
-.bp3-label {
+.bp5-label {
   text-transform: uppercase;
   font-weight: 600;
   font-size: 0.8rem;
 }
 
-.bp3-card {
+.bp5-card {
   background: transparent !important;
   border: 1px solid #293742;
 }
 
-.bp3-navbar.bp3-dark {
+.bp5-navbar.bp5-dark {
   background: #182026;
   box-shadow: none !important;
   border-bottom: 1px solid #293742;
 }
 
-.bp3-tag {
+.bp5-tag {
   font-weight: 500;
   text-transform: uppercase;
 }
 
-.bp3-tab-panel.bp3-tab-panel-no-margin-top {
+.bp5-tab-panel.bp5-tab-panel-no-margin-top {
   margin-top: 0;
 }
 
@@ -417,9 +417,9 @@ fieldset {
 /* .btn.btn-info {
   display: none;
 } */
-.bp3-spinner-animation {
+.bp5-spinner-animation {
   animation-duration: 1s;
 }
-.bp3-spinner-track {
+.bp5-spinner-track {
   stroke: #323c4280;
 }

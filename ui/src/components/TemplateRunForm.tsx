@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Formik, Form, FastField, Field } from "formik"
+import { Formik, FormikProps, Form, FastField, Field } from "formik"
 import * as Yup from "yup"
 import { RouteComponentProps } from "react-router-dom"
 import {
@@ -110,7 +110,7 @@ const ArrayFieldTemplate: React.FC<ArrayFieldTemplateProps> = props => {
 }
 
 class RunForm extends React.Component<Props> {
-  private FORMIK_REF = React.createRef<Formik<TemplateExecutionRequest>>()
+  private FORMIK_REF = React.createRef<FormikProps<TemplateExecutionRequest>>()
 
   // Note: this method is a bit hacky as we have two form elements - Formik (F)
   // and JSONSchemaForm (J). F does not have a submit button, J does. When J's
@@ -120,11 +120,12 @@ class RunForm extends React.Component<Props> {
   // then sent to the server.
   onSubmit(jsonschemaForm: any) {
     if (this.FORMIK_REF.current) {
-      const formikValues = this.FORMIK_REF.current.state.values
-      formikValues["template_payload"] = jsonschemaForm
       this.props.request({
         templateID: this.props.templateID,
-        data: formikValues,
+        data: {
+          ...this.FORMIK_REF.current.values,
+          template_payload: jsonschemaForm,
+        },
       })
     }
   }
@@ -143,7 +144,7 @@ class RunForm extends React.Component<Props> {
     return (
       <div className="flotilla-form-container">
         <Formik<TemplateExecutionRequest>
-          ref={this.FORMIK_REF}
+          innerRef={this.FORMIK_REF}
           isInitialValid={(values: any) =>
             validationSchema.isValidSync(values.initialValues)
           }
@@ -284,7 +285,7 @@ class RunForm extends React.Component<Props> {
             BaseInput: props => {
               return (
                 <input
-                  className="bp3-input"
+                  className={Classes.INPUT}
                   value={props.value}
                   required={props.required}
                   onChange={evt => {

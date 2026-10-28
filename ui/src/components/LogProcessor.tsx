@@ -5,7 +5,7 @@ import WebWorker from "../workers/index"
 import LogWorker from "../workers/log.worker"
 import { CHAR_TO_PX_RATIO } from "../constants"
 import LogVirtualized from "./LogVirtualized"
-import { Spinner, Callout } from "@blueprintjs/core"
+import { Spinner, SpinnerSize, Callout } from "@blueprintjs/core"
 
 type ConnectedProps = {
   logs: string
@@ -88,7 +88,7 @@ export class LogProcessor extends React.Component<Props, State> {
       return (
         <Callout>
           <div style={{ display: "flex" }}>
-            Optimizing... <Spinner size={Spinner.SIZE_SMALL} />
+            Optimizing... <Spinner size={SpinnerSize.SMALL} />
           </div>
         </Callout>
       )

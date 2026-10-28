@@ -1,35 +1,29 @@
-import React from "react"
-import { mount } from "enzyme"
-import { MemoryRouter } from "react-router-dom"
 import ConnectedRuns, {
   Runs as UnconnectedRuns,
   Props,
   initialQuery,
 } from "../Runs"
 import { RequestStatus } from "../Request"
-import ListRequest from "../ListRequest"
 import { SortOrder } from "../../types"
-import { Spinner } from "@blueprintjs/core"
-import Table from "../Table"
 import api from "../../api"
-import ErrorCallout from "../ErrorCallout"
 import { createMockRunObject } from "../../helpers/testHelpers"
+import { render, screen } from "../../test-utils"
 
-jest.mock("../../helpers/FlotillaClient")
+vi.mock("../../api", () => ({
+  default: {
+    listRun: vi.fn(() =>
+      Promise.resolve({ offset: 0, limit: 20, total: 0, history: [] })
+    ),
+  },
+}))
 
 describe("Runs", () => {
   describe("Connected", () => {
-    it("renders ListRequest and provides api.listRun as the requestFn", () => {
+    it("requests runs with api.listRun on mount", () => {
       expect(api.listRun).toHaveBeenCalledTimes(0)
 
-      const wrapper = mount(
-        <MemoryRouter>
-          <ConnectedRuns />
-        </MemoryRouter>
-      )
+      render(<ConnectedRuns />)
 
-      expect(wrapper.find(ListRequest)).toHaveLength(1)
-      expect(wrapper.find(ListRequest).prop("requestFn")).toEqual(api.listRun)
       expect(api.listRun).toHaveBeenCalledTimes(1)
     })
   })
@@ -51,59 +45,58 @@ describe("Runs", () => {
     }
 
     it("renders a Spinner props.requestStatus is `NOT_READY`", () => {
-      const wrapper = mount(
-        <MemoryRouter>
-          <UnconnectedRuns
-            {...defaultProps}
-            requestStatus={RequestStatus.NOT_READY}
-          />
-        </MemoryRouter>
+      render(
+        <UnconnectedRuns
+          {...defaultProps}
+          requestStatus={RequestStatus.NOT_READY}
+        />
       )
-      expect(wrapper.find(ErrorCallout)).toHaveLength(0)
-      expect(wrapper.find(Table)).toHaveLength(0)
-      expect(wrapper.find(Spinner)).toHaveLength(1)
+      expect(screen.queryByText("No Error Message Provided")).toBeNull()
+      expect(screen.queryByRole("table")).toBeNull()
+      expect(screen.getByRole("progressbar")).toBeInTheDocument()
     })
 
     it("renders a Table props.requestStatus is `READY`", () => {
-      const wrapper = mount(
-        <MemoryRouter>
-          <UnconnectedRuns
-            {...defaultProps}
-            requestStatus={RequestStatus.READY}
-            data={{
-              offset: 0,
-              limit: 20,
-              total: 3,
-              history: [
-                createMockRunObject({ run_id: "a" }),
-                createMockRunObject({ run_id: "b" }),
-                createMockRunObject({ run_id: "c" }),
-              ],
-            }}
-          />
-        </MemoryRouter>
+      render(
+        <UnconnectedRuns
+          {...defaultProps}
+          requestStatus={RequestStatus.READY}
+          data={{
+            offset: 0,
+            limit: 20,
+            total: 3,
+            history: [
+              createMockRunObject({ run_id: "a" }),
+              createMockRunObject({ run_id: "b" }),
+              createMockRunObject({ run_id: "c" }),
+            ],
+          }}
+        />
       )
-      expect(wrapper.find(ErrorCallout)).toHaveLength(0)
-      expect(wrapper.find(Spinner)).toHaveLength(0)
-      expect(wrapper.find(Table)).toHaveLength(1)
-      expect(wrapper.find(Table).prop("columns")).toHaveProperty("status")
-      expect(wrapper.find(Table).prop("columns")).toHaveProperty("started_at")
-      expect(wrapper.find(Table).prop("columns")).toHaveProperty("run_id")
-      expect(wrapper.find(Table).prop("columns")).toHaveProperty("alias")
+      expect(screen.queryByText("No Error Message Provided")).toBeNull()
+      expect(screen.queryByRole("progressbar")).toBeNull()
+      expect(screen.getByRole("table")).toBeInTheDocument()
+      for (const name of ["Status", "Started At", "Run ID", "Alias"]) {
+        expect(screen.getByRole("columnheader", { name })).toBeInTheDocument()
+      }
+      for (const runID of ["a", "b", "c"]) {
+        expect(screen.getByRole("link", { name: runID })).toHaveAttribute(
+          "href",
+          `/runs/${runID}`
+        )
+      }
     })
 
     it("renders an ErrorCallout props.requestStatus is `ERROR`", () => {
-      const wrapper = mount(
-        <MemoryRouter>
-          <UnconnectedRuns
-            {...defaultProps}
-            requestStatus={RequestStatus.ERROR}
-          />
-        </MemoryRouter>
+      render(
+        <UnconnectedRuns
+          {...defaultProps}
+          requestStatus={RequestStatus.ERROR}
+        />
       )
-      expect(wrapper.find(ErrorCallout)).toHaveLength(1)
-      expect(wrapper.find(Table)).toHaveLength(0)
-      expect(wrapper.find(Spinner)).toHaveLength(0)
+      expect(screen.getByText("No Error Message Provided")).toBeInTheDocument()
+      expect(screen.queryByRole("table")).toBeNull()
+      expect(screen.queryByRole("progressbar")).toBeNull()
     })
   })
 })

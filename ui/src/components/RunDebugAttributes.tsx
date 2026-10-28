@@ -41,7 +41,7 @@ const RunDebugAttributes: React.FC<{ data: Run }> = ({ data }) => (
               <Icon
                 icon="share"
                 style={{ marginLeft: 4, transform: "translateY(-2px)" }}
-                iconSize={12}
+                size={12}
               />
             </a>
           }
@@ -60,7 +60,7 @@ const RunDebugAttributes: React.FC<{ data: Run }> = ({ data }) => (
               <Icon
                 icon="share"
                 style={{ marginLeft: 4, transform: "translateY(-2px)" }}
-                iconSize={12}
+                size={12}
               />
             </a>
           }
@@ -79,7 +79,7 @@ const RunDebugAttributes: React.FC<{ data: Run }> = ({ data }) => (
               <Icon
                 icon="share"
                 style={{ marginLeft: 4, transform: "translateY(-2px)" }}
-                iconSize={12}
+                size={12}
               />
             </a>
           }

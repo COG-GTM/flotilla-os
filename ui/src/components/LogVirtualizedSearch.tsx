@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ButtonGroup, Button, Spinner } from "@blueprintjs/core"
+import { ButtonGroup, Button, Classes, Spinner, SpinnerSize } from "@blueprintjs/core"
 
 type Props = {
   onChange: (value: string) => void
@@ -31,7 +31,7 @@ const LogVirtualizedSearch: React.FC<Props> = ({
       onChange={evt => {
         onChange(evt.target.value)
       }}
-      className="bp3-input flotilla-logs-virtualized-search-input"
+      className={`${Classes.INPUT} flotilla-logs-virtualized-search-input`}
       ref={inputRef}
       onFocus={onFocus}
       onBlur={onBlur}
@@ -39,7 +39,7 @@ const LogVirtualizedSearch: React.FC<Props> = ({
       value={searchQuery}
     />
     {isSearchProcessing ? (
-      <Spinner size={Spinner.SIZE_SMALL} />
+      <Spinner size={SpinnerSize.SMALL} />
     ) : (
       totalMatches > 0 && (
         <div className="flotilla-logs-virtualized-search-info">

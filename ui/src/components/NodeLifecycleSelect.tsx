@@ -10,7 +10,7 @@ export const NodeLifecycleSelect: React.FunctionComponent<SelectProps & {
   options: SelectOption[]
 }> = props => {
   return (
-    <Select<SelectOption>
+    <Select<SelectOption, false>
       value={helpers.stringToSelectOpt(props.value)}
       options={[
         { label: NodeLifecycle.SPOT, value: NodeLifecycle.SPOT },
