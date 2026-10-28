@@ -1,6 +1,6 @@
 import { isArray } from "lodash"
 import { SelectOption } from "../types"
-import { ValueType, Theme } from "react-select/lib/types"
+import { MultiValue, SingleValue, Theme } from "react-select"
 import { Colors } from "@blueprintjs/core"
 
 export const stringToSelectOpt = (s: string): SelectOption => ({
@@ -10,17 +10,22 @@ export const stringToSelectOpt = (s: string): SelectOption => ({
 
 export const selectOptToString = (o: SelectOption): string => o.value
 
+const isMultiValue = (
+  o: SingleValue<SelectOption> | MultiValue<SelectOption>
+): o is MultiValue<SelectOption> => isArray(o)
+
 export const preprocessSelectOption = (
-  option: ValueType<SelectOption>
+  option: SingleValue<SelectOption> | MultiValue<SelectOption>
 ): string => {
-  if (option === null || option === undefined || isArray(option)) return ""
+  if (option === null || option === undefined || isMultiValue(option)) return ""
   return option.value
 }
 
 export const preprocessMultiSelectOption = (
-  options: ValueType<SelectOption>
+  options: SingleValue<SelectOption> | MultiValue<SelectOption>
 ): string[] => {
-  if (options === null || options === undefined || !isArray(options)) return []
+  if (options === null || options === undefined || !isMultiValue(options))
+    return []
   return options.map(selectOptToString)
 }
 
@@ -49,10 +54,10 @@ export const selectTheme = (theme: Theme): Theme => ({
   ...theme,
   colors: {
     ...theme.colors,
-    primary: Colors.COBALT1,
-    primary75: Colors.COBALT1,
-    primary50: Colors.COBALT1,
-    primary25: Colors.COBALT1,
+    primary: Colors.CERULEAN1,
+    primary75: Colors.CERULEAN1,
+    primary50: Colors.CERULEAN1,
+    primary25: Colors.CERULEAN1,
     danger: Colors.RED1,
     dangerLight: Colors.RED4,
     neutral0: Colors.BLACK,

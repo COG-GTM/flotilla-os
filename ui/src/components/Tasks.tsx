@@ -107,7 +107,7 @@ export const Tasks: React.FunctionComponent<Props> = props => {
           <DebounceInput
             id="tasksAliasFilter"
             style={{ flex: 1 }}
-            className="bp3-input flotilla-list-utils-searchbar"
+            className={`${Classes.INPUT} flotilla-list-utils-searchbar`}
             debounceTimeout={500}
             value={get(query, "alias", "")}
             onChange={(evt: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,7 +129,7 @@ export const Tasks: React.FunctionComponent<Props> = props => {
           <FormGroup label="Image" helperText="Search by Docker image.">
             <DebounceInput
               id="tasksImageFilter"
-              className="bp3-input"
+              className={Classes.INPUT}
               debounceTimeout={500}
               value={get(query, "image", "")}
               onChange={(evt: React.ChangeEvent<HTMLInputElement>) => {

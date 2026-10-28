@@ -1,6 +1,6 @@
 import * as React from "react"
 import { get, isArray } from "lodash"
-import Creatable from "react-select/lib/Creatable"
+import Creatable from "react-select/creatable"
 import Request from "./Request"
 import { ListClustersResponse, SelectOption, SelectProps } from "../types"
 import api from "../api"
@@ -15,7 +15,7 @@ export const ClusterSelect: React.FunctionComponent<SelectProps & {
   options: SelectOption[]
 }> = props => {
   return (
-    <Creatable<SelectOption>
+    <Creatable<SelectOption, false>
       value={helpers.stringToSelectOpt(props.value)}
       options={props.options}
       isClearable

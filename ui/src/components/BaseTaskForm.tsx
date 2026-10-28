@@ -6,6 +6,7 @@ import GroupNameSelect from "./GroupNameSelect"
 import TagsSelect from "./TagsSelect"
 import EnvFieldArray from "./EnvFieldArray"
 import FieldError from "./FieldError"
+import { UpdateTaskPayload } from "../types"
 import {
   groupNameFieldSpec,
   imageFieldSpec,
@@ -41,7 +42,7 @@ export const validationSchema = {
 }
 
 export type Props = Pick<
-  FormikProps<any>,
+  FormikProps<UpdateTaskPayload>,
   "values" | "setFieldValue" | "errors"
 >
 

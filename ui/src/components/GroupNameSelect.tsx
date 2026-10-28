@@ -1,11 +1,11 @@
 import * as React from "react"
 import { get } from "lodash"
-import Creatable from "react-select/lib/Creatable"
+import Creatable from "react-select/creatable"
 import Request, { RequestStatus } from "./Request"
 import { ListGroupsResponse, SelectOption, SelectProps } from "../types"
 import api from "../api"
 import * as helpers from "../helpers/selectHelpers"
-import { Classes, Spinner } from "@blueprintjs/core"
+import { Classes, Spinner, SpinnerSize } from "@blueprintjs/core"
 
 /**
  * GroupNameSelect lets users choose a group name for their task definition. It
@@ -17,7 +17,7 @@ export const GroupNameSelect: React.FunctionComponent<SelectProps & {
   options: SelectOption[]
 }> = props => {
   return (
-    <Creatable<SelectOption>
+    <Creatable<SelectOption, false>
       value={helpers.stringToSelectOpt(props.value)}
       options={props.options}
       onChange={option => {
@@ -60,7 +60,7 @@ const ConnectedGroupNameSelect: React.FunctionComponent<SelectProps> = props => 
           )
         case RequestStatus.NOT_READY:
         default:
-          return <Spinner size={Spinner.SIZE_SMALL} />
+          return <Spinner size={SpinnerSize.SMALL} />
       }
     }}
   </Request>
