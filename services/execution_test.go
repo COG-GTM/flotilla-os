@@ -5,6 +5,8 @@ import (
 	"crypto/md5"
 	"fmt"
 	"log"
+	"slices"
+	"sync"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -1009,5 +1011,87 @@ func TestExecutionService_SparkNullDescriptionNullHash(t *testing.T) {
 	// Should have NULL command_hash (malformed job)
 	if run.CommandHash != nil {
 		t.Errorf("Expected NULL command_hash for Spark job with NULL description, got '%s'", *run.CommandHash)
+	}
+}
+
+func TestExecutionService_ValidClustersDoesNotGrowAcrossRuns(t *testing.T) {
+	ctx := context.Background()
+	es, _ := setUp(t)
+	impl := es.(*executionService)
+	configured := slices.Clone(impl.validEksClusters)
+
+	engine := state.DefaultEngine
+	for i := 0; i < 50; i++ {
+		req := state.DefinitionExecutionRequest{
+			ExecutionRequestCommon: &state.ExecutionRequestCommon{
+				OwnerID: "somebody",
+				Engine:  &engine,
+			},
+		}
+		if _, err := es.CreateDefinitionRunByDefinitionID(ctx, "A", &req); err != nil {
+			t.Fatalf("run %d: unexpected error: %s", i, err.Error())
+		}
+	}
+
+	if !slices.Equal(impl.validEksClusters, configured) {
+		t.Errorf("Expected validEksClusters to stay %v after repeated runs, got %d entries: %v",
+			configured, len(impl.validEksClusters), impl.validEksClusters)
+	}
+}
+
+func TestExecutionService_ValidClustersIncludesRegistryClusters(t *testing.T) {
+	ctx := context.Background()
+	es, _ := setUp(t)
+	engine := state.DefaultEngine
+
+	for _, tc := range []struct {
+		cluster string
+		wantErr bool
+	}{
+		{cluster: "clusta", wantErr: false},
+		{cluster: "cluster2", wantErr: false},
+		{cluster: "not-a-cluster", wantErr: true},
+	} {
+		req := state.DefinitionExecutionRequest{
+			ExecutionRequestCommon: &state.ExecutionRequestCommon{
+				ClusterName: tc.cluster,
+				OwnerID:     "somebody",
+				Engine:      &engine,
+			},
+		}
+		_, err := es.CreateDefinitionRunByDefinitionID(ctx, "A", &req)
+		if tc.wantErr && err == nil {
+			t.Errorf("Expected cluster %q to be rejected", tc.cluster)
+		}
+		if !tc.wantErr && err != nil {
+			t.Errorf("Expected cluster %q to be accepted, got: %s", tc.cluster, err.Error())
+		}
+	}
+}
+
+func TestExecutionService_ValidClustersConcurrent(t *testing.T) {
+	es, _ := setUp(t)
+	impl := es.(*executionService)
+	configured := slices.Clone(impl.validEksClusters)
+	metadata := []state.ClusterMetadata{{Name: "cluster1"}, {Name: "cluster2"}, {Name: "clusta"}}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				valid := impl.validClusters(metadata)
+				if len(valid) != len(configured)+2 {
+					t.Errorf("Expected %d valid clusters, got %v", len(configured)+2, valid)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	if !slices.Equal(impl.validEksClusters, configured) {
+		t.Errorf("Expected validEksClusters to stay %v, got %v", configured, impl.validEksClusters)
 	}
 }
