@@ -1,8 +1,8 @@
 # AGENTS.md
 
 Flotilla is a Go service (repo root) with a React + TypeScript web UI in `ui/`.
-This file tells Devin how to work in this repo, and in particular how to run the
-**UI modernization** as a coordinated, parallel effort.
+This file holds the build and test rules for this repo and the target stack for the
+**UI modernization**. The work plan itself is in Linear (see below).
 
 ## UI today (`ui/`)
 
@@ -33,51 +33,14 @@ Rules for the migration:
 - Port every Enzyme spec to React Testing Library. Keep each original test's intent; query by role/label/text, not by component type. Don't delete a test unless the behavior it covers no longer exists, and say so in the PR.
 - No `any` casts or `@ts-ignore` added just to silence the upgrade. If one is unavoidable, add a one-line reason.
 
-## How to run it in parallel (coordinator + managed Devins)
+## Work plan lives in Linear
 
-When asked to modernize/upgrade the UI, act as the **coordinator**:
+The modernization plan is tracked in Linear (project "Stitch Fix demo: Flotilla UI modernization"): one coordinator epic plus one sub-issue per work package.
+The issues define the steps, branch names, file ownership and definition of done. Read them with the Linear tools.
 
-1. **Foundation (coordinator only).** Branch `devin/ui-modernization` off `master`. Own and change only:
-   `ui/package.json` (+ commit `ui/package-lock.json`), `ui/tsconfig.json`, `ui/vite.config.ts`, `ui/index.html`,
-   `ui/src/index.tsx`, `ui/src/setupTests.ts` (replaces `setupTests.js`), `ui/src/vite-env.d.ts` (replaces `react-app-env.d.ts`),
-   `ui/src/test-utils.tsx` (an RTL `render` helper that wraps Redux `Provider` + `MemoryRouter`), `ui/Dockerfile`, `ui/README.md`.
-   Done when `npm ci` and `npx vite build` succeed. Type errors and failing specs in feature files are expected at this point.
-   Record the baseline: total `tsc` error count and per-package counts. Push the branch.
-2. **Fan out.** Start one managed Devin per work package below, all in parallel, each branching off
-   `devin/ui-modernization` and opening its PR **into `devin/ui-modernization`** (never into `master`).
-   Tag the sessions `flotilla-ui-modernization`.
-3. **Merge and integrate.** As child PRs arrive, review them against the rules above and merge them into
-   `devin/ui-modernization`. Resolve any conflicts yourself.
-4. **Verify the whole UI.** `npm ci && npm run typecheck && npm test && npm run build` all pass on the integration branch. Boot `npm run dev` and screenshot the Tasks, Templates and Runs pages; without a backend, API error callouts are acceptable, but there must be no render crash or console error from React/Blueprint.
-5. **Open one PR** from `devin/ui-modernization` into `master` with the rollup below. Do not merge it.
-
-### Work packages (file ownership)
-
-A child edits only its own files (and their specs). If it needs a change in a file it doesn't own, it asks the coordinator instead.
-Any `ui/src` file not listed belongs to **shell-data**.
-
-| Package | Files under `ui/src` |
-|---|---|
-| **tasks-forms** | `components/`: BaseTaskForm, CreateTaskForm, UpdateTaskForm, TaskExecutionForm, EnvFieldArray, EnvList, EnvQueryFilter, FieldError, GroupNameSelect, TagsSelect, ClusterSelect, GenericMultiSelect, NodeLifecycleSelect, Task, TaskDetails, Tasks, DeleteTaskButton; `helpers/`: selectHelpers, taskFormHelpers, runFormHelpers, getInitialValuesForExecutionForm |
-| **templates** | `components/`: Template, TemplateDetails, TemplateExecutionForm, TemplateHistoryTable, TemplateRunForm, Templates; `helpers/`: constructDefaultObjectFromJsonSchema |
-| **runs** | `components/`: Run, Runs, RunAttributes, RunDebugAttributes, RunEvents, RunSidebar, RunStatusSelect, RunTag, StopRunButton, TaskRuns, CloudtrailRecords, Duration, EngineTag, ResourceUsageValue, ISO8601AttributeValue, ARASwitch; `helpers/`: calculateDuration, getEnhancedRunStatus, getOwnerIdRunTagFromCookies |
-| **logs** | `components/`: Log, LogProcessor, LogRequesterCloudWatchLogs, LogRequesterS3, LogVirtualized, LogVirtualizedRow, LogVirtualizedSearch, AutoscrollSwitch; `workers/` |
-| **shell-data** | `components/`: App, Navigation, ViewHeader, SettingsButton, Toaster, Toggler, Table, SortableTh, Pagination, QueryParams, Request, ListRequest, ListFiltersDropdown, Attribute, ErrorCallout; `api.ts`, `constants.ts`, `types.ts`, `localstorage.ts`, `state/`, `helpers/FlotillaClient.ts`, `helpers/__mocks__/`, `helpers/testHelpers.ts`, `helpers/pageToOffsetLimit.ts` |
-
-A spec belongs to the package that owns the file it tests (e.g. `components/__tests__/Run.spec.tsx` -> runs).
-
-### Child definition of done
-
-- `npx tsc --noEmit -p ui` reports **zero errors in the package's files** (errors in other packages' files are expected while siblings are still working; the coordinator checks the full count after merging).
-- `npx vitest run <the package's spec files>` passes from `ui/`.
-- PR into `devin/ui-modernization` whose description lists: files changed, tsc errors in the package before -> after, specs ported, any behavior questions.
-
-### Rollup (coordinator's final PR description and report)
-
-| Package | Session | PR | tsc errors before -> after | Specs ported / passing | ACUs | Wall time |
-|---|---|---|---|---|---|---|
-
-Plus totals, the integration-branch commands and their results, the screenshots, and anything that needs a human decision.
+- If you're given the **epic**, you are the coordinator: follow its steps and start one managed Devin per sub-issue with the prompt `Work Linear issue <ID>.`
+- If you're given a **sub-issue**, move it to In Progress, edit only the files it lists (comment on the issue if you need anything else), open your PR into the integration branch it names, link the PR on the issue, and move it to In Review.
+- Status, PR links and the final rollup go on the Linear issues, so progress is visible there.
 
 ## Commands
 
