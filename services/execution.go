@@ -72,6 +72,8 @@ type executionService struct {
 	terminateJobChannel   chan state.TerminateJob
 	validEksClusters      []string
 	//validEksClusterTiers  string
+	eksAllowedServiceAccounts map[string]bool
+	emrAllowedServiceAccounts map[string]bool
 }
 
 func (es *executionService) GetEvents(ctx context.Context, run state.Run) (state.PodEventList, error) {
@@ -157,8 +159,55 @@ func NewExecutionService(conf config.Config, eksExecutionEngine engine.Engine, s
 		},
 	}
 
+	es.eksAllowedServiceAccounts = buildServiceAccountAllowlist(
+		conf.GetString("eks_default_service_account"),
+		conf.GetStringSlice("eks_allowed_service_accounts"))
+	es.emrAllowedServiceAccounts = buildServiceAccountAllowlist(
+		conf.GetString("emr_default_service_account"),
+		conf.GetStringSlice("emr_allowed_service_accounts"))
+
 	es.terminateJobChannel = make(chan state.TerminateJob, 100)
 	return &es, nil
+}
+
+// buildServiceAccountAllowlist returns the set of service accounts that callers
+// may request: the engine default plus any explicitly configured accounts.
+// Entries may be given as a list or as comma separated strings.
+func buildServiceAccountAllowlist(defaultSA string, allowed []string) map[string]bool {
+	allowlist := make(map[string]bool)
+	for _, entry := range append([]string{defaultSA}, allowed...) {
+		for _, sa := range strings.Split(entry, ",") {
+			if sa = strings.TrimSpace(sa); sa != "" {
+				allowlist[sa] = true
+			}
+		}
+	}
+	return allowlist
+}
+
+// validateServiceAccount rejects caller-supplied service accounts that are not
+// on the operator-configured allowlist for the requested engine. An unset or
+// empty value is normalized to nil so the engine applies its default.
+func (es *executionService) validateServiceAccount(fields *state.ExecutionRequestCommon) error {
+	if fields.ServiceAccount == nil {
+		return nil
+	}
+	sa := strings.TrimSpace(*fields.ServiceAccount)
+	if sa == "" {
+		fields.ServiceAccount = nil
+		return nil
+	}
+
+	allowlist := es.eksAllowedServiceAccounts
+	if fields.Engine != nil && *fields.Engine == state.EKSSparkEngine {
+		allowlist = es.emrAllowedServiceAccounts
+	}
+	if !allowlist[sa] {
+		return exceptions.MalformedInput{
+			ErrorString: fmt.Sprintf("service_account [%s] is not permitted", sa)}
+	}
+	fields.ServiceAccount = &sa
+	return nil
 }
 
 // ReservedVariables returns the list of reserved run environment variable
@@ -312,6 +361,10 @@ func (es *executionService) constructBaseRunFromExecutable(ctx context.Context, 
 	// Compute the executable command based on the execution request. If the
 	// execution request did not specify an overriding command, use the computed
 	// `executableCmd` as the Run's Command.
+
+	if err = es.validateServiceAccount(fields); err != nil {
+		return run, err
+	}
 
 	runID, err := state.NewRunID(fields.Engine)
 	if err != nil {

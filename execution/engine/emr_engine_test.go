@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -320,5 +321,26 @@ func TestLakekeeperSecretEnvVarsNotConfigured(t *testing.T) {
 	emr := &EMRExecutionEngine{}
 	if got := emr.lakekeeperSecretEnvVars(); got != nil {
 		t.Fatalf("env var count = %d, want none when no secret is configured", len(got))
+	}
+}
+
+func TestGenerateEMRStartJobRunInputRejectsUnmappedServiceAccount(t *testing.T) {
+	emr := &EMRExecutionEngine{
+		log:           nopLogger{},
+		emrJobRoleArn: map[string]string{"emr-default": "arn:aws:iam::123456789012:role/emr-default"},
+	}
+	sa := "prod-etl"
+	run := state.Run{RunID: "eks-spark-test", ServiceAccount: &sa}
+	_, err := emr.generateEMRStartJobRunInput(context.Background(), state.Definition{}, run, nil, state.Capabilities{})
+	if err == nil {
+		t.Fatal("expected error when no role ARN is configured for the service account")
+	}
+}
+
+func TestGenerateEMRStartJobRunInputRejectsNilServiceAccount(t *testing.T) {
+	emr := &EMRExecutionEngine{log: nopLogger{}, emrJobRoleArn: map[string]string{}}
+	_, err := emr.generateEMRStartJobRunInput(context.Background(), state.Definition{}, state.Run{RunID: "eks-spark-test"}, nil, state.Capabilities{})
+	if err == nil {
+		t.Fatal("expected error when service account is nil")
 	}
 }

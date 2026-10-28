@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stitchfix/flotilla-os/config"
+	"github.com/stitchfix/flotilla-os/exceptions"
 	"github.com/stitchfix/flotilla-os/state"
 	"github.com/stitchfix/flotilla-os/testutils"
 )
@@ -1009,5 +1010,82 @@ func TestExecutionService_SparkNullDescriptionNullHash(t *testing.T) {
 	// Should have NULL command_hash (malformed job)
 	if run.CommandHash != nil {
 		t.Errorf("Expected NULL command_hash for Spark job with NULL description, got '%s'", *run.CommandHash)
+	}
+}
+
+func TestExecutionService_ServiceAccountAllowlist(t *testing.T) {
+	ctx := context.Background()
+	cmd := "_test_cmd_"
+	entryPoint := "s3://bucket/script.py"
+	desc := "spark job"
+
+	newReq := func(engine string, sa *string) *state.DefinitionExecutionRequest {
+		req := &state.DefinitionExecutionRequest{
+			ExecutionRequestCommon: &state.ExecutionRequestCommon{
+				ClusterName:    "clusta",
+				OwnerID:        "somebody",
+				Engine:         aws.String(engine),
+				ServiceAccount: sa,
+			},
+		}
+		if engine == state.EKSSparkEngine {
+			req.Description = &desc
+			req.SparkExtension = &state.SparkExtension{
+				SparkSubmitJobDriver: &state.SparkSubmitJobDriver{EntryPoint: &entryPoint},
+			}
+		} else {
+			req.Command = &cmd
+		}
+		return req
+	}
+
+	tests := []struct {
+		name    string
+		engine  string
+		sa      *string
+		wantErr bool
+		wantSA  *string
+	}{
+		{"eks unset uses engine default", state.EKSEngine, nil, false, nil},
+		{"eks empty normalized to default", state.EKSEngine, aws.String("  "), false, nil},
+		{"eks default allowed", state.EKSEngine, aws.String("flotilla-default"), false, aws.String("flotilla-default")},
+		{"eks allowlisted", state.EKSEngine, aws.String("fooAccount"), false, aws.String("fooAccount")},
+		{"eks not allowlisted", state.EKSEngine, aws.String("data-admin"), true, nil},
+		{"eks cannot use emr account", state.EKSEngine, aws.String("emr-team-a"), true, nil},
+		{"spark allowlisted", state.EKSSparkEngine, aws.String("emr-team-a"), false, aws.String("emr-team-a")},
+		{"spark default allowed", state.EKSSparkEngine, aws.String("emr-default"), false, aws.String("emr-default")},
+		{"spark not allowlisted", state.EKSSparkEngine, aws.String("prod-etl"), true, nil},
+		{"spark cannot use eks account", state.EKSSparkEngine, aws.String("fooAccount"), true, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			es, imp := setUp(t)
+			run, err := es.CreateDefinitionRunByDefinitionID(ctx, "A", newReq(tt.engine, tt.sa))
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for service account %q", *tt.sa)
+				}
+				if _, ok := err.(exceptions.MalformedInput); !ok {
+					t.Errorf("expected MalformedInput error, got %T: %v", err, err)
+				}
+				for _, call := range imp.Calls {
+					if call == "CreateRun" || call == "Enqueue" {
+						t.Errorf("run must not be created or enqueued for a rejected service account, saw %s", call)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantSA == nil {
+				if run.ServiceAccount != nil {
+					t.Errorf("expected nil service account, got %q", *run.ServiceAccount)
+				}
+			} else if run.ServiceAccount == nil || *run.ServiceAccount != *tt.wantSA {
+				t.Errorf("expected service account %q, got %v", *tt.wantSA, run.ServiceAccount)
+			}
+		})
 	}
 }
