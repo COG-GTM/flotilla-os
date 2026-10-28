@@ -712,3 +712,67 @@ func TestLakekeeperSecretEnvVarsNotConfigured(t *testing.T) {
 		t.Fatalf("env var count = %d, want none when no secret is configured", len(got))
 	}
 }
+
+func hasDockerSocket(mounts []corev1.VolumeMount, volumes []corev1.Volume) bool {
+	for _, v := range volumes {
+		if v.Name == "dockersock" || (v.HostPath != nil && v.HostPath.Path == "/var/run/docker.sock") {
+			return true
+		}
+	}
+	for _, m := range mounts {
+		if m.Name == "dockersock" || m.MountPath == "/var/run/docker.sock" {
+			return true
+		}
+	}
+	return false
+}
+
+func TestConstructVolumeMounts_DockerSocket(t *testing.T) {
+	executable := &mockExecutable{executableID: "def-allowed", resources: &state.ExecutableResources{}}
+	cases := []struct {
+		name      string
+		allowlist map[string]string
+		run       state.Run
+		expected  bool
+	}{
+		{
+			name:     "requires_docker without allowlist config is ignored",
+			run:      state.Run{RunID: "r1", DefinitionID: "def-allowed", RequiresDocker: true},
+			expected: false,
+		},
+		{
+			name:      "requires_docker on non-allowlisted definition is ignored",
+			allowlist: map[string]string{"eks_docker_socket_allowed_definition_ids": "def-allowed"},
+			run:       state.Run{RunID: "r2", DefinitionID: "def-attacker", GroupName: "def-allowed", RequiresDocker: true},
+			expected:  false,
+		},
+		{
+			name:      "allowlisted definition without requires_docker gets no socket",
+			allowlist: map[string]string{"eks_docker_socket_allowed_definition_ids": "def-allowed"},
+			run:       state.Run{RunID: "r3", DefinitionID: "def-allowed"},
+			expected:  false,
+		},
+		{
+			name:      "allowlisted definition with requires_docker gets socket",
+			allowlist: map[string]string{"eks_docker_socket_allowed_definition_ids": "other, def-allowed"},
+			run:       state.Run{RunID: "r4", DefinitionID: "def-allowed", RequiresDocker: true},
+			expected:  true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			values := tc.allowlist
+			if values == nil {
+				values = map[string]string{}
+			}
+			a, err := NewEKSAdapter(&mockConfig{values: values}, &mockLogger{})
+			if err != nil {
+				t.Fatalf("Failed to create adapter: %v", err)
+			}
+			mounts, volumes := a.(*eksAdapter).constructVolumeMounts(context.Background(), executable, tc.run, &mockStateManager{}, false)
+			if got := hasDockerSocket(mounts, volumes); got != tc.expected {
+				t.Errorf("expected docker socket mounted=%v, got %v", tc.expected, got)
+			}
+		})
+	}
+}

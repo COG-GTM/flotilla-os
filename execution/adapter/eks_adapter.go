@@ -25,18 +25,38 @@ type EKSAdapter interface {
 	AdaptFlotillaDefinitionAndRunToJob(ctx context.Context, executable state.Executable, run state.Run, schedulerName string, manager state.Manager, araEnabled bool, capabilities state.Capabilities) (batchv1.Job, error)
 }
 type eksAdapter struct {
-	logger               flotillaLog.Logger
-	lakekeeperSecretName string
+	logger                           flotillaLog.Logger
+	lakekeeperSecretName             string
+	dockerSocketAllowedDefinitionIDs map[string]bool
 }
 
 // NewEKSAdapter configures and returns an eks adapter for translating
 // from EKS api specific objects to our representation
 func NewEKSAdapter(conf config.Config, logger flotillaLog.Logger) (EKSAdapter, error) {
 	adapter := eksAdapter{
-		logger:               logger,
-		lakekeeperSecretName: conf.GetString("eks_lakekeeper_secret_name"),
+		logger:                           logger,
+		lakekeeperSecretName:             conf.GetString("eks_lakekeeper_secret_name"),
+		dockerSocketAllowedDefinitionIDs: parseAllowlist(conf.GetString("eks_docker_socket_allowed_definition_ids")),
 	}
 	return &adapter, nil
+}
+
+func parseAllowlist(raw string) map[string]bool {
+	allowed := make(map[string]bool)
+	for _, entry := range strings.Split(raw, ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			allowed[entry] = true
+		}
+	}
+	return allowed
+}
+
+// dockerSocketAllowed reports whether the run may mount the node's Docker socket.
+// Mounting it grants root on the node, so it is only permitted for definition ids
+// explicitly allowlisted in server-side config; the user-settable requires_docker
+// flag alone is never sufficient.
+func (a *eksAdapter) dockerSocketAllowed(run state.Run) bool {
+	return run.RequiresDocker && run.DefinitionID != "" && a.dockerSocketAllowedDefinitionIDs[run.DefinitionID]
 }
 
 // Adapting Kubernetes batch/v1 job to a Flotilla run object.
@@ -400,7 +420,15 @@ func (a *eksAdapter) constructVolumeMounts(ctx context.Context, executable state
 		emptyDir := corev1.EmptyDirVolumeSource{Medium: "Memory", SizeLimit: &sharedLimit}
 		volumes[0] = corev1.Volume{Name: "shared-memory", VolumeSource: corev1.VolumeSource{EmptyDir: &emptyDir}}
 	}
-	if run.RequiresDocker {
+	if run.RequiresDocker && !a.dockerSocketAllowed(run) && a.logger != nil {
+		_ = a.logger.Log(
+			"level", "warn",
+			"message", "requires_docker set on a definition not allowlisted for docker socket access; not mounting docker socket",
+			"run_id", run.RunID,
+			"definition_id", run.DefinitionID,
+		)
+	}
+	if a.dockerSocketAllowed(run) {
 		volumes = append(volumes, corev1.Volume{
 			Name: "dockersock",
 			VolumeSource: corev1.VolumeSource{

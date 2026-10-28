@@ -265,6 +265,7 @@ The variables in `conf/config.yml` are sensible defaults. Most should be left al
 | `eks_job_ttl` | default job ttl in seconds |
 | `eks_job_queue` | SQS job queue - the api places the jobs on this queue and the submit worker asynchronously submits it to Kubernetes/EKS |
 | `eks.service_account` | Kubernetes service account to use for jobs. |
+| `eks_docker_socket_allowed_definition_ids` | Comma-separated definition ids allowed to mount the node's Docker socket (`/var/run/docker.sock`) when `requires_docker` is set. Empty by default, meaning `requires_docker` is ignored. Mounting the socket grants root on the node; only allowlist trusted definitions. |
 
 ## Development
 
