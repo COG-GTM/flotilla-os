@@ -1880,7 +1880,7 @@ func (sm *SQLStateManager) CreateTemplate(ctx context.Context, t Template) error
 			template_id, template_name, version, schema, command_template,
 			adaptive_resource_allocation, image, memory, env, cpu, gpu, defaults, avatar_uri
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
     `
 
 	tx, err := sm.db.BeginTx(ctx, nil)

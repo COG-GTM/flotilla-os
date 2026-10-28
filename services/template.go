@@ -221,7 +221,8 @@ func (ts *templateService) constructTemplateFromCreateTemplateRequest(req *state
 	if req.AdaptiveResourceAllocation != nil {
 		tpl.AdaptiveResourceAllocation = req.AdaptiveResourceAllocation
 	} else {
-		*tpl.AdaptiveResourceAllocation = true
+		adaptiveResourceAllocation := true
+		tpl.AdaptiveResourceAllocation = &adaptiveResourceAllocation
 	}
 
 	if req.Ports != nil {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stitchfix/flotilla-os/clients/middleware"
@@ -884,5 +885,32 @@ func TestEndpoints_CreateCluster(t *testing.T) {
 
 	if _, ok := ack["created"]; !ok {
 		t.Errorf("Expected [created] acknowledgement")
+	}
+}
+
+func TestEndpoints_CreateTemplate_RejectsEnvFunction(t *testing.T) {
+	imp := testutils.ImplementsAllTheThings{T: t, Templates: map[string]state.Template{}}
+	ts, _ := services.NewTemplateService(nil, &imp)
+	router := NewRouter(endpoints{templateService: ts})
+
+	body := `{"template_name":"leak","schema":{"type":"object"},"image":"someimage","memory":100,` +
+		`"command_template":"echo {{ env \"AWS_SECRET_ACCESS_KEY\" }}"}`
+	req := httptest.NewRequest("POST", "/api/v7/template", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != 400 {
+		t.Errorf("Expected status 400, was %v", resp.StatusCode)
+	}
+	respBody := w.Body.String()
+	if !strings.Contains(respBody, `function \"env\" not defined`) {
+		t.Errorf("Expected undefined function error, got %s", respBody)
+	}
+	for _, call := range imp.Calls {
+		if call == "CreateTemplate" {
+			t.Errorf("rejected template must not be stored")
+		}
 	}
 }
