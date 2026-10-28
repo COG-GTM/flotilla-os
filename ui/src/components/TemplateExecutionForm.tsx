@@ -2,6 +2,7 @@ import * as React from "react"
 import { Formik, Form, FastField, Field } from "formik"
 import * as Yup from "yup"
 import { RouteComponentProps } from "react-router-dom"
+import type { StaticContext } from "react-router"
 import JSONInput from "react-json-editor-ajrm"
 import locale from "react-json-editor-ajrm/locale/en"
 import {
@@ -206,7 +207,7 @@ const TemplateExecutionForm: React.FC<Props> = ({
                 }}
                 locale={locale}
               />
-              {errors.template_payload && (
+              {typeof errors.template_payload === "string" && (
                 <FieldError>{errors.template_payload}</FieldError>
               )}
             </FormGroup>
@@ -227,7 +228,11 @@ const TemplateExecutionForm: React.FC<Props> = ({
   )
 }
 
-const Connected: React.FunctionComponent<RouteComponentProps> = ({
+const Connected: React.FunctionComponent<RouteComponentProps<
+  {},
+  StaticContext,
+  Run | undefined
+>> = ({
   location,
   history,
 }) => {
@@ -259,7 +264,7 @@ const Connected: React.FunctionComponent<RouteComponentProps> = ({
                 if (ctx.data) {
                   const initialValues: TemplateExecutionRequest = getInitialValuesForTemplateExecutionForm(
                     ctx.data,
-                    location.state
+                    location.state ?? null
                   )
                   return (
                     <TemplateExecutionForm
