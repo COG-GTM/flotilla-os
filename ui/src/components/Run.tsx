@@ -187,7 +187,7 @@ export class Run extends React.Component<Props> {
                   state: data,
                 }}
               >
-                <div className="bp3-button-text">Retry</div>
+                <div className={Classes.BUTTON_TEXT}>Retry</div>
                 <Icon icon="repeat" />
               </Link>
             )
@@ -311,12 +311,8 @@ export class Run extends React.Component<Props> {
                               </Tooltip>
                             ) : (
                               `EKS Cloudtrail Records (${
-                                hasCloudtrailRecords
-                                  ? get(
-                                      data,
-                                      ["cloudtrail_notifications", "Records"],
-                                      []
-                                    ).length
+                                cloudtrailRecords
+                                  ? cloudtrailRecords.length
                                   : 0
                               })`
                             )

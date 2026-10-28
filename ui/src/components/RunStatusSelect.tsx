@@ -12,7 +12,7 @@ const RunStatusSelect: React.FunctionComponent<MultiSelectProps> = props => {
     v = props.value.map(helpers.stringToSelectOpt)
   }
   return (
-    <Select<SelectOption>
+    <Select<SelectOption, true>
       value={v}
       options={[
         { label: RunStatus.PENDING, value: RunStatus.PENDING },
