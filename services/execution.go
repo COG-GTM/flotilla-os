@@ -250,11 +250,9 @@ func (es *executionService) createFromDefinition(ctx context.Context, definition
 		fields.ClusterName = es.eksClusterDefault
 	}
 
-	for _, c := range clusterMetadata {
-		es.validEksClusters = append(es.validEksClusters, c.Name)
-	}
-	if !es.isClusterValid(fields.ClusterName) {
-		return run, fmt.Errorf("%s was not found in the list of valid clusters: %s", fields.ClusterName, es.validEksClusters)
+	validClusters := es.validClusters(clusterMetadata)
+	if !slices.Contains(validClusters, fields.ClusterName) {
+		return run, fmt.Errorf("%s was not found in the list of valid clusters: %s", fields.ClusterName, validClusters)
 	}
 	span.SetTag("clusterName", fields.ClusterName)
 	run.User = req.OwnerID
@@ -779,8 +777,17 @@ func (es *executionService) clusterSupportsTier(cluster state.ClusterMetadata, r
 	return false
 }
 
-func (es *executionService) isClusterValid(clusterName string) bool {
-	return slices.Contains(es.validEksClusters, clusterName)
+// validClusters returns the configured clusters plus the registry clusters for a
+// single request, without mutating the shared es.validEksClusters slice.
+func (es *executionService) validClusters(clusterMetadata []state.ClusterMetadata) []string {
+	valid := make([]string, 0, len(es.validEksClusters)+len(clusterMetadata))
+	valid = append(valid, es.validEksClusters...)
+	for _, c := range clusterMetadata {
+		if !slices.Contains(valid, c.Name) {
+			valid = append(valid, c.Name)
+		}
+	}
+	return valid
 }
 
 func (es *executionService) UpdateClusterMetadata(ctx context.Context, cluster state.ClusterMetadata) error {
