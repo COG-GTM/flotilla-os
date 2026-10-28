@@ -1,9 +1,9 @@
 import * as React from "react"
 import { Link } from "react-router-dom"
-import { Breadcrumbs, IBreadcrumbProps, Classes } from "@blueprintjs/core"
+import { Breadcrumbs, BreadcrumbProps, Classes } from "@blueprintjs/core"
 
 type Props = {
-  breadcrumbs: IBreadcrumbProps[]
+  breadcrumbs: BreadcrumbProps[]
   buttons?: React.ReactNode
   leftButton?: React.ReactNode
 }
@@ -18,7 +18,7 @@ const ViewHeader: React.FunctionComponent<Props> = ({
       {leftButton && leftButton}
       <Breadcrumbs
         items={breadcrumbs}
-        breadcrumbRenderer={(props: IBreadcrumbProps) => (
+        breadcrumbRenderer={(props: BreadcrumbProps) => (
           <Link to={props.href ? props.href : "/"}>{props.text}</Link>
         )}
         className={Classes.TEXT_LARGE}

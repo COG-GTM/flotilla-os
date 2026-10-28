@@ -11,7 +11,7 @@ import Navigation from "./Navigation"
 import ls from "../localstorage"
 import { LOCAL_STORAGE_IS_ONBOARDED_KEY } from "../constants"
 import Toaster from "./Toaster"
-import { Intent } from "@blueprintjs/core"
+import { Classes, Intent } from "@blueprintjs/core"
 import { connect, ConnectedProps } from "react-redux"
 import { toggleDialogVisibilityChange } from "../state/settings"
 
@@ -51,7 +51,7 @@ class App extends React.Component<ConnectedProps<typeof connector>> {
 
   render() {
     return (
-      <div className="flotilla-app-container bp3-dark">
+      <div className={`flotilla-app-container ${Classes.DARK}`}>
         <BrowserRouter>
           <Navigation />
           <Switch>

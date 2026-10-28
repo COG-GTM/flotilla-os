@@ -2,7 +2,7 @@ import * as React from "react"
 import { Tag, Tooltip, Icon, Intent } from "@blueprintjs/core"
 import CopyToClipboard from "react-copy-to-clipboard"
 
-type Props = { rawValue: string }
+type Props = { rawValue: string; children?: React.ReactNode }
 type State = { isCopied: boolean }
 
 class CopyableAttributeValue extends React.Component<Props, State> {
@@ -68,7 +68,7 @@ const Attribute: React.FunctionComponent<{
       <div>{name}</div>
       {description && (
         <Tooltip content={description}>
-          <Icon icon="info-sign" iconSize={14} />
+          <Icon icon="info-sign" size={14} />
         </Tooltip>
       )}
       {isNew && <Tag intent={Intent.DANGER}>New!</Tag>}

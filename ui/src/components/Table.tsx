@@ -16,7 +16,7 @@ type Props<ItemType> = {
   getItemKey: (item: ItemType, index: number) => any
   updateSort: (sortKey: string) => void
   currentSortKey: string
-  currentSortOrder: SortOrder
+  currentSortOrder: SortOrder | ""
 }
 
 class Table<ItemType> extends React.Component<Props<ItemType>> {

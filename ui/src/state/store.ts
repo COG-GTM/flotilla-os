@@ -2,24 +2,12 @@ import {
   configureStore,
   Action,
   combineReducers,
-  getDefaultMiddleware,
+  ThunkAction,
+  Middleware,
 } from "@reduxjs/toolkit"
-import { ThunkAction } from "redux-thunk"
 import { createLogger } from "redux-logger"
 import settings from "./settings"
 import runView from "./runView"
-
-const middleware = [...getDefaultMiddleware()]
-
-// Only use redux-logger in non-production.
-if (process.env.NODE_ENV !== "production") {
-  const logger = createLogger({
-    collapsed: true,
-    timestamp: false,
-  })
-
-  middleware.push(logger)
-}
 
 const rootReducer = combineReducers({
   settings,
@@ -28,10 +16,18 @@ const rootReducer = combineReducers({
 
 const store = configureStore({
   reducer: rootReducer,
-  middleware,
+  middleware: getDefaultMiddleware => {
+    // Only use redux-logger in non-production.
+    if (process.env.NODE_ENV !== "production") {
+      return getDefaultMiddleware().concat(
+        createLogger({ collapsed: true, timestamp: false }) as Middleware
+      )
+    }
+    return getDefaultMiddleware()
+  },
 })
 
 export type RootState = ReturnType<typeof rootReducer>
 export type AppDispatch = typeof store.dispatch
-export type AppThunk = ThunkAction<void, RootState, null, Action<string>>
+export type AppThunk = ThunkAction<void, RootState, unknown, Action<string>>
 export default store

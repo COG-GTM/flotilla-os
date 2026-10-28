@@ -24,7 +24,7 @@ export type ChildProps<Response, Args> = Omit<
   updateFilter: (key: string, value: any) => void
   currentPage: number
   currentSortKey: string
-  currentSortOrder: SortOrder
+  currentSortOrder: SortOrder | ""
   query: any
 }
 

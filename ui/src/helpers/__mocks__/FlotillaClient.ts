@@ -20,21 +20,26 @@ import {
 } from "../../types"
 import { createMockRunObject, createMockTaskObject } from "../testHelpers"
 
-const getTask = jest.fn(
+// `api.ts` throws without a base URL; default it for specs using this mock.
+if (process.env.REACT_APP_BASE_URL_DEV === undefined) {
+  process.env.REACT_APP_BASE_URL_DEV = "http://localhost"
+}
+
+const getTask = vi.fn(
   ({ definitionID }: { definitionID: string }): Promise<Task> =>
     new Promise<Task>(resolve => {
       resolve(createMockTaskObject({ definition_id: definitionID }))
     })
 )
 
-const getTaskByAlias = jest.fn(
+const getTaskByAlias = vi.fn(
   ({ alias }: { alias: string }): Promise<Task> =>
     new Promise<Task>(resolve => {
       resolve(createMockTaskObject({ alias }))
     })
 )
 
-const listTaskRuns = jest.fn(
+const listTaskRuns = vi.fn(
   ({
     definitionID,
     params,
@@ -57,7 +62,7 @@ const listTaskRuns = jest.fn(
     })
 )
 
-const listTasks = jest.fn(
+const listTasks = vi.fn(
   ({ params }: { params: ListTaskParams }): Promise<ListTaskResponse> =>
     new Promise<ListTaskResponse>(resolve => {
       resolve({
@@ -74,14 +79,14 @@ const listTasks = jest.fn(
     })
 )
 
-const createTask = jest.fn(
+const createTask = vi.fn(
   ({ data }: { data: CreateTaskPayload }): Promise<Task> =>
     new Promise<Task>(resolve => {
       resolve(createMockTaskObject(data))
     })
 )
 
-const updateTask = jest.fn(
+const updateTask = vi.fn(
   ({
     definitionID,
     data,
@@ -94,14 +99,14 @@ const updateTask = jest.fn(
     })
 )
 
-const deleteTask = jest.fn(
+const deleteTask = vi.fn(
   ({ definitionID }: { definitionID: string }): Promise<any> =>
     new Promise<any>(resolve => {
       resolve(true)
     })
 )
 
-const runTask = jest.fn(
+const runTask = vi.fn(
   ({
     definitionID,
     data,
@@ -140,7 +145,7 @@ const runTask = jest.fn(
     })
 )
 
-const listRun = jest.fn(
+const listRun = vi.fn(
   ({ params }: { params: ListRunParams }): Promise<ListRunResponse> =>
     new Promise<ListRunResponse>(resolve => {
       resolve({
@@ -158,7 +163,7 @@ const listRun = jest.fn(
     })
 )
 
-const getRun = jest.fn(
+const getRun = vi.fn(
   ({ runID }: { runID: string }): Promise<Run> =>
     new Promise<Run>(resolve => {
       resolve(
@@ -191,7 +196,7 @@ const getRun = jest.fn(
     })
 )
 
-const getRunLog = jest.fn(
+const getRunLog = vi.fn(
   ({
     runID,
     lastSeen = "",
@@ -207,7 +212,7 @@ const getRunLog = jest.fn(
     })
 )
 
-const stopRun = jest.fn(
+const stopRun = vi.fn(
   ({
     definitionID,
     runID,
@@ -220,7 +225,7 @@ const stopRun = jest.fn(
     })
 )
 
-export const listClusters = jest.fn(
+export const listClusters = vi.fn(
   (): Promise<ListClustersResponse> =>
     new Promise<ListClustersResponse>(resolve => {
       resolve({
@@ -232,7 +237,7 @@ export const listClusters = jest.fn(
     })
 )
 
-const listGroups = jest.fn(
+const listGroups = vi.fn(
   (): Promise<ListGroupsResponse> =>
     new Promise<ListGroupsResponse>(resolve => {
       resolve({
@@ -244,7 +249,7 @@ const listGroups = jest.fn(
     })
 )
 
-const listTags = jest.fn(
+const listTags = vi.fn(
   (): Promise<ListTagsResponse> =>
     new Promise<ListTagsResponse>(resolve => {
       resolve({
@@ -256,7 +261,8 @@ const listTags = jest.fn(
     })
 )
 
-export default jest.fn().mockImplementation(() => {
+// `function` (not an arrow) so the mock can be constructed with `new`.
+export default vi.fn(function FlotillaClient() {
   return {
     getTask,
     getTaskByAlias,

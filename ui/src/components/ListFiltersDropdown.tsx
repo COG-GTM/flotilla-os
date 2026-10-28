@@ -1,7 +1,9 @@
 import * as React from "react"
 import { Button, Tooltip, Popover, Position, Card } from "@blueprintjs/core"
 
-const ListFiltersDropdown: React.FunctionComponent<{}> = ({ children }) => (
+const ListFiltersDropdown: React.FunctionComponent<{
+  children?: React.ReactNode
+}> = ({ children }) => (
   <Popover
     minimal
     position={Position.BOTTOM_RIGHT}
