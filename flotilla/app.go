@@ -94,6 +94,10 @@ func NewApp(conf config.Config,
 		logger:            log,
 		middlewareClient:  middlewareClient,
 		definitionService: definitionService,
+		clusterAdminToken: conf.GetString("cluster_admin_token"),
+	}
+	if ep.clusterAdminToken == "" {
+		_ = log.Log("level", "warn", "message", "cluster_admin_token is not set; cluster registry writes are disabled")
 	}
 
 	app.configureRoutes(ep)
@@ -130,6 +134,7 @@ func (app *App) configureRoutes(ep endpoints) {
 	c := cors.New(cors.Options{
 		AllowedOrigins: app.corsAllowedOrigins,
 		AllowedMethods: []string{"GET", "DELETE", "POST", "PUT"},
+		AllowedHeaders: []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization"},
 	})
 	app.handler = c.Handler(router)
 }

@@ -56,6 +56,9 @@ func NewDynamicClusterManager(awsRegion string, log flotillaLog.Logger, manager 
 
 // getOrCreateKubeconfig ensures a valid kubeconfig exists for the given cluster
 func (dcm *DynamicClusterManager) getOrCreateKubeconfig(clusterName string) (string, error) {
+	if !state.IsValidClusterName(clusterName) {
+		return "", errors.Errorf("invalid cluster name [%s]", clusterName)
+	}
 	kubeconfigBaseDir := getKubeconfigBaseDir()
 	kubeconfigPath := filepath.Join(kubeconfigBaseDir, clusterName)
 

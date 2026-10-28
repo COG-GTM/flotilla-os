@@ -253,6 +253,8 @@ The variables in `conf/config.yml` are sensible defaults. Most should be left al
 | `eks_kubeconfig_basepath` | folder where the kubeconfigs are stored |
 | `eks_cluster_ondemand_whitelist` | override list of cluster names where to force ondemand node types |
 | `eks_cluster_override` | EKS clusters to override traffic |
+| `eks_cluster_tiers` | Comma separated tiers a cluster registry entry may list in `allowed_tiers` (default `1,2,3,4`, plus `eks_tier_default`) |
+| `cluster_admin_token` | Bearer token required by `POST/PUT/DELETE /api/v6/clusters`; when unset, cluster registry writes are rejected with 401 |
 | `eks_scheduler_name` | Custom scheduler name to use, default is `kube-scheduler` |
 | `eks_manifest_storage.options.region` | Kubernetes manifest s3 upload bucket aws region |
 | `eks_manifest_storage_options_s3_bucket_name` | S3 bucket name for manifest storage. |

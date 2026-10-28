@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stitchfix/flotilla-os/clients/middleware"
@@ -14,7 +15,14 @@ import (
 	muxtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorilla/mux"
 )
 
+const testClusterAdminToken = "test-cluster-admin-token"
+
 func setUp(t *testing.T) *muxtrace.Router {
+	ep, _ := setUpEndpoints(t)
+	return NewRouter(ep)
+}
+
+func setUpEndpoints(t *testing.T) (endpoints, *testutils.ImplementsAllTheThings) {
 	confDir := "../conf"
 	c, _ := config.NewConfig(&confDir)
 	imp := testutils.ImplementsAllTheThings{
@@ -47,8 +55,8 @@ func setUp(t *testing.T) *muxtrace.Router {
 	es, _ := services.NewExecutionService(c, &imp, &imp, &imp, &imp)
 	ls, _ := services.NewLogService(&imp, &imp)
 	mwc, _ := middleware.NewClient()
-	ep := endpoints{definitionService: ds, executionService: es, eksLogService: ls, middlewareClient: mwc}
-	return NewRouter(ep)
+	return endpoints{definitionService: ds, executionService: es, eksLogService: ls, middlewareClient: mwc,
+		clusterAdminToken: testClusterAdminToken}, &imp
 }
 
 func TestEndpoints_CreateDefinition(t *testing.T) {
@@ -805,8 +813,9 @@ func TestEndpoints_GetCluster(t *testing.T) {
 func TestEndpoints_UpdateCluster(t *testing.T) {
 	router := setUp(t)
 
-	updateReq := `{"status":"ACTIVE", "reason":"Testing update"}`
+	updateReq := `{"name":"cluster1", "status":"ACTIVE", "status_reason":"Testing update", "allowed_tiers":["1","4"]}`
 	req := httptest.NewRequest("PUT", "/api/v6/clusters/cluster1", bytes.NewBufferString(updateReq))
+	req.Header.Set("Authorization", "Bearer "+testClusterAdminToken)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -835,6 +844,7 @@ func TestEndpoints_DeleteCluster(t *testing.T) {
 	router := setUp(t)
 
 	req := httptest.NewRequest("DELETE", "/api/v6/clusters/cluster1", nil)
+	req.Header.Set("Authorization", "Bearer "+testClusterAdminToken)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -862,7 +872,8 @@ func TestEndpoints_DeleteCluster(t *testing.T) {
 func TestEndpoints_CreateCluster(t *testing.T) {
 	router := setUp(t)
 
-	req := httptest.NewRequest("POST", "/api/v6/clusters", bytes.NewBufferString(`{"name":"cluster1", "status":"ACTIVE", "reason":"Testing create"}`))
+	req := httptest.NewRequest("POST", "/api/v6/clusters", bytes.NewBufferString(`{"name":"cluster1", "status":"ACTIVE", "status_reason":"Testing create"}`))
+	req.Header.Set("Authorization", "Bearer "+testClusterAdminToken)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -884,5 +895,132 @@ func TestEndpoints_CreateCluster(t *testing.T) {
 
 	if _, ok := ack["created"]; !ok {
 		t.Errorf("Expected [created] acknowledgement")
+	}
+}
+
+func TestEndpoints_ClusterWritesRequireAdminToken(t *testing.T) {
+	body := `{"name":"cluster3", "status":"active", "allowed_tiers":["1","2","3","4"]}`
+	cases := []struct {
+		name       string
+		method     string
+		path       string
+		auth       string
+		adminToken string
+	}{
+		{"create without token", "POST", "/api/v6/clusters", "", testClusterAdminToken},
+		{"update without token", "PUT", "/api/v6/clusters/cluster1", "", testClusterAdminToken},
+		{"delete without token", "DELETE", "/api/v6/clusters/cluster1", "", testClusterAdminToken},
+		{"create with wrong token", "POST", "/api/v6/clusters", "Bearer wrong", testClusterAdminToken},
+		{"create with non-bearer auth", "POST", "/api/v6/clusters", testClusterAdminToken, testClusterAdminToken},
+		{"create when no token configured", "POST", "/api/v6/clusters", "Bearer ", ""},
+		{"delete when no token configured", "DELETE", "/api/v6/clusters/cluster1", "Bearer ", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ep, imp := setUpEndpoints(t)
+			ep.clusterAdminToken = tc.adminToken
+			router := NewRouter(ep)
+
+			req := httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString(body))
+			if tc.auth != "" {
+				req.Header.Set("Authorization", tc.auth)
+			}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != 401 {
+				t.Errorf("Expected status 401, was %v", w.Code)
+			}
+			if w.Header().Get("WWW-Authenticate") == "" {
+				t.Errorf("Expected WWW-Authenticate header on 401")
+			}
+			for _, call := range imp.Calls {
+				if call == "UpdateClusterMetadata" || call == "DeleteClusterMetadata" {
+					t.Errorf("Expected registry to be untouched, but %s was called", call)
+				}
+			}
+		})
+	}
+}
+
+func TestEndpoints_ClusterReadsStayOpen(t *testing.T) {
+	router := setUp(t)
+	for _, path := range []string{"/api/v6/clusters", "/api/v6/clusters/cluster1", "/api/v1/clusters"} {
+		req := httptest.NewRequest("GET", path, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Errorf("GET %s: expected status 200, was %v", path, w.Code)
+		}
+	}
+}
+
+func TestEndpoints_ClusterWritesRejectInvalidMetadata(t *testing.T) {
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{"path traversal name", "POST", "/api/v6/clusters", `{"name":"../x", "status":"active"}`},
+		{"slash in name", "PUT", "/api/v6/clusters/cluster1", `{"name":"a/b", "status":"active"}`},
+		{"empty name", "PUT", "/api/v6/clusters/cluster1", `{"status":"active"}`},
+		{"option-like name", "POST", "/api/v6/clusters", `{"name":"--region", "status":"active"}`},
+		{"unknown status", "POST", "/api/v6/clusters", `{"name":"cluster3", "status":"hijacked"}`},
+		{"unknown tier", "POST", "/api/v6/clusters", `{"name":"cluster3", "status":"active", "allowed_tiers":["1","99"]}`},
+		{"bad namespace", "POST", "/api/v6/clusters", `{"name":"cluster3", "status":"active", "namespace":"../kube-system"}`},
+		{"bad region", "POST", "/api/v6/clusters", `{"name":"cluster3", "status":"active", "region":"us-east-1 --profile x"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ep, imp := setUpEndpoints(t)
+			router := NewRouter(ep)
+			req := httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString(tc.body))
+			req.Header.Set("Authorization", "Bearer "+testClusterAdminToken)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			if w.Code != 400 {
+				t.Errorf("Expected status 400, was %v (%s)", w.Code, w.Body.String())
+			}
+			for _, call := range imp.Calls {
+				if call == "UpdateClusterMetadata" {
+					t.Errorf("Expected invalid metadata not to be written")
+				}
+			}
+		})
+	}
+}
+
+func TestApp_CORSAllowsAuthorizedClusterWrites(t *testing.T) {
+	const origin = "http://flotilla-ui.example"
+	ep, _ := setUpEndpoints(t)
+	app := App{corsAllowedOrigins: []string{origin}}
+	app.configureRoutes(ep)
+
+	preflight := httptest.NewRequest("OPTIONS", "/api/v6/clusters", nil)
+	preflight.Header.Set("Origin", origin)
+	preflight.Header.Set("Access-Control-Request-Method", "POST")
+	preflight.Header.Set("Access-Control-Request-Headers", "authorization,content-type")
+	w := httptest.NewRecorder()
+	app.handler.ServeHTTP(w, preflight)
+
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != origin {
+		t.Errorf("Expected preflight to allow origin %s, got %q", origin, got)
+	}
+	if got := strings.ToLower(w.Header().Get("Access-Control-Allow-Headers")); !strings.Contains(got, "authorization") {
+		t.Errorf("Expected preflight to allow the Authorization header, got %q", got)
+	}
+
+	req := httptest.NewRequest("POST", "/api/v6/clusters", bytes.NewBufferString(`{"name":"cluster3", "status":"active"}`))
+	req.Header.Set("Origin", origin)
+	req.Header.Set("Authorization", "Bearer "+testClusterAdminToken)
+	w = httptest.NewRecorder()
+	app.handler.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Errorf("Expected status 200, was %v (%s)", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != origin {
+		t.Errorf("Expected response to allow origin %s, got %q", origin, got)
 	}
 }

@@ -5,10 +5,12 @@ import (
 	"crypto/md5"
 	"fmt"
 	"log"
+	"slices"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stitchfix/flotilla-os/config"
+	"github.com/stitchfix/flotilla-os/exceptions"
 	"github.com/stitchfix/flotilla-os/state"
 	"github.com/stitchfix/flotilla-os/testutils"
 )
@@ -1009,5 +1011,83 @@ func TestExecutionService_SparkNullDescriptionNullHash(t *testing.T) {
 	// Should have NULL command_hash (malformed job)
 	if run.CommandHash != nil {
 		t.Errorf("Expected NULL command_hash for Spark job with NULL description, got '%s'", *run.CommandHash)
+	}
+}
+
+func TestExecutionService_UpdateClusterMetadataValidation(t *testing.T) {
+	ctx := context.Background()
+	es, imp := setUp(t)
+
+	invalid := []state.ClusterMetadata{
+		{Name: "../x", Status: state.StatusActive},
+		{Name: "a/b", Status: state.StatusActive},
+		{Name: "", Status: state.StatusActive},
+		{Name: "-cluster", Status: state.StatusActive},
+		{Name: "cluster3", Status: "hijacked"},
+		{Name: "cluster3", Status: ""},
+		{Name: "cluster3", Status: state.StatusActive, AllowedTiers: state.Tiers{"1", "99"}},
+		{Name: "cluster3", Status: state.StatusActive, Namespace: "Bad_Namespace"},
+		{Name: "cluster3", Status: state.StatusActive, Region: "../us-east-1"},
+	}
+	for _, c := range invalid {
+		err := es.UpdateClusterMetadata(ctx, c)
+		if _, ok := err.(exceptions.MalformedInput); !ok {
+			t.Errorf("Expected MalformedInput for %+v, got %v", c, err)
+		}
+	}
+	for _, call := range imp.Calls {
+		if call == "UpdateClusterMetadata" {
+			t.Fatalf("Expected invalid cluster metadata not to reach the state manager")
+		}
+	}
+
+	valid := state.ClusterMetadata{
+		Name:         "prod_cluster-2",
+		Status:       "ACTIVE",
+		AllowedTiers: state.Tiers{"1", "2", "3", "4"},
+		Namespace:    "flotilla",
+		Region:       "us-east-1",
+	}
+	if err := es.UpdateClusterMetadata(ctx, valid); err != nil {
+		t.Errorf("Expected valid cluster metadata to be accepted, got %v", err)
+	}
+}
+
+func TestParseClusterTiers(t *testing.T) {
+	if got := parseClusterTiers("", "4"); !slices.Equal(got, []string{"1", "2", "3", "4"}) {
+		t.Errorf("unexpected default tiers %v", got)
+	}
+	if got := parseClusterTiers(" gold, silver ,gold", "bronze"); !slices.Equal(got, []string{"gold", "silver", "bronze"}) {
+		t.Errorf("unexpected configured tiers %v", got)
+	}
+}
+
+func TestExecutionService_IgnoresInvalidRegistryClusterNames(t *testing.T) {
+	ctx := context.Background()
+	es, imp := setUp(t)
+	imp.ClusterStates = []state.ClusterMetadata{
+		{Name: "../../etc/evil", Status: state.StatusActive, AllowedTiers: state.Tiers{"1", "2", "3", "4"}},
+	}
+
+	cmd := "echo test"
+	engine := state.DefaultEngine
+	req := state.DefinitionExecutionRequest{
+		ExecutionRequestCommon: &state.ExecutionRequestCommon{
+			Command: &cmd,
+			OwnerID: "testuser",
+			Engine:  &engine,
+		},
+	}
+	run, err := es.CreateDefinitionRunByDefinitionID(ctx, "A", &req)
+	if err != nil {
+		t.Fatalf("Error creating run: %s", err.Error())
+	}
+	if run.ClusterName != es.GetDefaultCluster() {
+		t.Errorf("Expected default cluster %s, got %s", es.GetDefaultCluster(), run.ClusterName)
+	}
+
+	req.ClusterName = "../../etc/evil"
+	if _, err := es.CreateDefinitionRunByDefinitionID(ctx, "A", &req); err == nil {
+		t.Errorf("Expected an invalid registry cluster name to be rejected as a run target")
 	}
 }
