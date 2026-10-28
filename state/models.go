@@ -393,6 +393,10 @@ func (d *Definition) UpdateWith(other Definition) {
 	if other.Tags != nil {
 		d.Tags = other.Tags
 	}
+	// Partial updates can only enable requires_docker; callers must enforce the allowlist.
+	if other.RequiresDocker {
+		d.RequiresDocker = true
+	}
 }
 
 func (d Definition) MarshalJSON() ([]byte, error) {

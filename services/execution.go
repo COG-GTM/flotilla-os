@@ -71,6 +71,7 @@ type executionService struct {
 	spotThresholdMinutes  float64
 	terminateJobChannel   chan state.TerminateJob
 	validEksClusters      []string
+	dockerSocketAllowlist state.DockerSocketAllowlist
 	//validEksClusterTiers  string
 }
 
@@ -98,6 +99,7 @@ func NewExecutionService(conf config.Config, eksExecutionEngine engine.Engine, s
 		ownerKey = "FLOTILLA_RUN_OWNER_ID"
 	}
 
+	es.dockerSocketAllowlist = state.NewDockerSocketAllowlist(conf)
 	es.validEksClusters = strings.Split(conf.GetString("eks_clusters"), ",")
 	for k, _ := range es.validEksClusters {
 		es.validEksClusters[k] = strings.TrimSpace(es.validEksClusters[k])
@@ -279,7 +281,7 @@ func (es *executionService) constructRunFromDefinition(ctx context.Context, defi
 	queuedAt := time.Now()
 	run.QueuedAt = &queuedAt
 	run.GroupName = definition.GroupName
-	run.RequiresDocker = definition.RequiresDocker
+	run.RequiresDocker = definition.RequiresDocker && es.dockerSocketAllowlist.Permits(definition.DefinitionID)
 
 	if req.Description != nil {
 		run.Description = req.Description
