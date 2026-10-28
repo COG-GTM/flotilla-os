@@ -2,7 +2,10 @@ package flotilla
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -14,7 +17,38 @@ import (
 	muxtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorilla/mux"
 )
 
-func setUp(t *testing.T) *muxtrace.Router {
+const (
+	testIdentity = "test-user@example.com"
+	testAPIKey   = "test-all-roles-key"
+)
+
+func digest(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
+
+func testAuthenticator() *Authenticator {
+	return &Authenticator{keys: map[string]Principal{
+		digest(testAPIKey): {Identity: testIdentity, Roles: map[Role]bool{RoleUser: true, RoleOperator: true, RoleWorker: true}},
+	}}
+}
+
+// withDefaultKey sends testAPIKey on requests that carry no Authorization header.
+type withDefaultKey struct{ next http.Handler }
+
+func (h withDefaultKey) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Authorization") == "" {
+		r.Header.Set("Authorization", "Bearer "+testAPIKey)
+	}
+	h.next.ServeHTTP(w, r)
+}
+
+func setUp(t *testing.T) http.Handler {
+	router, _ := setUpWith(t, testAuthenticator(), LaunchPolicy{})
+	return withDefaultKey{router}
+}
+
+func setUpWith(t *testing.T, auth *Authenticator, policy LaunchPolicy) (*muxtrace.Router, *testutils.ImplementsAllTheThings) {
 	confDir := "../conf"
 	c, _ := config.NewConfig(&confDir)
 	imp := testutils.ImplementsAllTheThings{
@@ -47,8 +81,8 @@ func setUp(t *testing.T) *muxtrace.Router {
 	es, _ := services.NewExecutionService(c, &imp, &imp, &imp, &imp)
 	ls, _ := services.NewLogService(&imp, &imp)
 	mwc, _ := middleware.NewClient()
-	ep := endpoints{definitionService: ds, executionService: es, eksLogService: ls, middlewareClient: mwc}
-	return NewRouter(ep)
+	ep := endpoints{definitionService: ds, executionService: es, eksLogService: ls, middlewareClient: mwc, auth: auth, policy: policy}
+	return NewRouter(ep), &imp
 }
 
 func TestEndpoints_CreateDefinition(t *testing.T) {
@@ -221,8 +255,8 @@ func TestEndpoints_CreateRun4(t *testing.T) {
 		t.Error(string(labelRes))
 	}
 
-	if r.User != "flotilla" {
-		t.Errorf("Expected new run to have user set to run_tags.owner_id but was [%s]", r.User)
+	if r.User != testIdentity {
+		t.Errorf("Expected new run to have user set to the authenticated identity, not run_tags.owner_id, but was [%s]", r.User)
 	}
 }
 
@@ -259,8 +293,8 @@ func TestEndpoints_CreateRunByAlias(t *testing.T) {
 		t.Errorf("Expected new run to have status [%s] but was [%s]", state.StatusQueued, r.Status)
 	}
 
-	if r.User != "flotilla" {
-		t.Errorf("Expected new run to have user set to run_tags.owner_id but was [%s]", r.User)
+	if r.User != testIdentity {
+		t.Errorf("Expected new run to have user set to the authenticated identity, not run_tags.owner_id, but was [%s]", r.User)
 	}
 }
 

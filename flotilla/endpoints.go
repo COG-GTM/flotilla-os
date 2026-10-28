@@ -25,6 +25,8 @@ type endpoints struct {
 	workerService     services.WorkerService
 	middlewareClient  middleware.Client
 	logger            flotillaLog.Logger
+	auth              *Authenticator
+	policy            LaunchPolicy
 }
 
 type listRequest struct {
@@ -118,6 +120,10 @@ func (ep endpoints) encodeError(w http.ResponseWriter, err error) {
 		w.WriteHeader(http.StatusConflict)
 	case exceptions.MissingResource:
 		w.WriteHeader(http.StatusNotFound)
+	case exceptions.Unauthenticated:
+		w.WriteHeader(http.StatusUnauthorized)
+	case exceptions.Forbidden:
+		w.WriteHeader(http.StatusForbidden)
 	default:
 		w.WriteHeader(http.StatusInternalServerError)
 	}
@@ -204,6 +210,10 @@ func (ep *endpoints) CreateDefinition(w http.ResponseWriter, r *http.Request) {
 		ep.encodeError(w, exceptions.MalformedInput{ErrorString: err.Error()})
 		return
 	}
+	if err = ep.policy.CheckImage(definition.Image); err != nil {
+		ep.encodeError(w, err)
+		return
+	}
 
 	created, err := ep.definitionService.Create(r.Context(), &definition)
 	if err != nil {
@@ -224,6 +234,10 @@ func (ep *endpoints) UpdateDefinition(w http.ResponseWriter, r *http.Request) {
 	err := ep.decodeRequest(r, &definition)
 	if err != nil {
 		ep.encodeError(w, exceptions.MalformedInput{ErrorString: err.Error()})
+		return
+	}
+	if err = ep.policy.CheckImage(definition.Image); err != nil {
+		ep.encodeError(w, err)
 		return
 	}
 
@@ -402,7 +416,7 @@ func (ep *endpoints) CreateRun(w http.ResponseWriter, r *http.Request) {
 	req := state.DefinitionExecutionRequest{
 		ExecutionRequestCommon: &state.ExecutionRequestCommon{
 			Env:              lr.Env,
-			OwnerID:          "v1-unknown",
+			OwnerID:          ep.verifiedOwner(r, "v1-unknown"),
 			Command:          nil,
 			Memory:           nil,
 			Cpu:              nil,
@@ -413,6 +427,10 @@ func (ep *endpoints) CreateRun(w http.ResponseWriter, r *http.Request) {
 			CommandHash:      nil,
 			Tier:             lr.Tier,
 		},
+	}
+	if err := ep.policy.CheckServiceAccount(req.ExecutionRequestCommon); err != nil {
+		ep.encodeError(w, err)
+		return
 	}
 	run, err := ep.executionService.CreateDefinitionRunByDefinitionID(r.Context(), vars["definition_id"], &req)
 	if err != nil {
@@ -441,6 +459,8 @@ func (ep *endpoints) CreateRunV2(w http.ResponseWriter, r *http.Request) {
 		ep.encodeError(w, err)
 		return
 	}
+
+	lr.RunTags.OwnerEmail = ep.verifiedOwner(r, lr.RunTags.OwnerEmail)
 
 	// check if OwnerEmail is present in lr.EventLabels
 	if len(lr.RunTags.OwnerEmail) == 0 || len(lr.RunTags.TeamName) == 0 {
@@ -479,6 +499,10 @@ func (ep *endpoints) CreateRunV2(w http.ResponseWriter, r *http.Request) {
 			Tier:             lr.Tier,
 		},
 	}
+	if err := ep.policy.CheckServiceAccount(req.ExecutionRequestCommon); err != nil {
+		ep.encodeError(w, err)
+		return
+	}
 	run, err := ep.executionService.CreateDefinitionRunByDefinitionID(r.Context(), vars["definition_id"], &req)
 	if err != nil {
 		ep.logger.Log(
@@ -505,6 +529,7 @@ func (ep *endpoints) CreateRunV4(w http.ResponseWriter, r *http.Request) {
 		ep.encodeError(w, err)
 		return
 	}
+	lr.RunTags.OwnerID = ep.verifiedOwner(r, lr.RunTags.OwnerID)
 	if len(lr.RunTags.OwnerID) == 0 {
 		ep.encodeError(w, exceptions.MalformedInput{
 			ErrorString: fmt.Sprintf("run_tags must exist in body and contain [owner_id]")})
@@ -551,6 +576,10 @@ func (ep *endpoints) CreateRunV4(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	if err := ep.policy.CheckServiceAccount(req.ExecutionRequestCommon); err != nil {
+		ep.encodeError(w, err)
+		return
+	}
 	run, err := ep.executionService.CreateDefinitionRunByDefinitionID(r.Context(), vars["definition_id"], &req)
 	if err != nil {
 		ep.logger.Log(
@@ -579,6 +608,7 @@ func (ep *endpoints) CreateRunByAlias(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lr.RunTags.OwnerID = ep.verifiedOwner(r, lr.RunTags.OwnerID)
 	if len(lr.RunTags.OwnerID) == 0 {
 		ep.encodeError(w, exceptions.MalformedInput{
 			ErrorString: fmt.Sprintf("run_tags must exist in body and contain [owner_id]")})
@@ -626,6 +656,10 @@ func (ep *endpoints) CreateRunByAlias(w http.ResponseWriter, r *http.Request) {
 			Tier:                  lr.Tier,
 		},
 	}
+	if err := ep.policy.CheckServiceAccount(req.ExecutionRequestCommon); err != nil {
+		ep.encodeError(w, err)
+		return
+	}
 	run, err := ep.executionService.CreateDefinitionRunByAlias(r.Context(), vars["alias"], &req)
 	if err != nil {
 		ep.logger.Log(
@@ -656,9 +690,15 @@ func (ep *endpoints) StopRun(w http.ResponseWriter, r *http.Request) {
 	ep.encodeResponse(w, map[string]bool{"terminated": true})
 }
 
-// Extracts user info if present in the headers.s
+// Extracts user info from the verified caller. Identity headers are only
+// honoured when authentication is explicitly disabled.
 func (ep *endpoints) ExtractUserInfo(r *http.Request) state.UserInfo {
 	var userInfo state.UserInfo
+	if p, ok := PrincipalFromContext(r.Context()); ok && !p.Unverified {
+		userInfo.Name = p.Identity
+		userInfo.Email = p.Identity
+		return userInfo
+	}
 	for name, headers := range r.Header {
 		name = strings.ToLower(name)
 		for _, h := range headers {
@@ -673,6 +713,16 @@ func (ep *endpoints) ExtractUserInfo(r *http.Request) state.UserInfo {
 		}
 	}
 	return userInfo
+}
+
+// verifiedOwner returns the authenticated caller's identity, ignoring any
+// owner supplied in the request body. The claimed value is only used when
+// authentication is explicitly disabled.
+func (ep *endpoints) verifiedOwner(r *http.Request, claimed string) string {
+	if p, ok := PrincipalFromContext(r.Context()); ok && !p.Unverified {
+		return p.Identity
+	}
+	return claimed
 }
 
 // Update an existing run.
@@ -893,9 +943,17 @@ func (ep *endpoints) CreateTemplateRunByName(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if req.ExecutionRequestCommon == nil {
+		req.ExecutionRequestCommon = &state.ExecutionRequestCommon{}
+	}
+	req.OwnerID = ep.verifiedOwner(r, req.OwnerID)
 	if len(req.OwnerID) == 0 {
 		ep.encodeError(w, exceptions.MalformedInput{
 			ErrorString: fmt.Sprintf("request payload must contain [owner_id]; the run_tags field is deprecated for the v7 endpoint.")})
+		return
+	}
+	if err = ep.policy.CheckServiceAccount(req.ExecutionRequestCommon); err != nil {
+		ep.encodeError(w, err)
 		return
 	}
 
@@ -936,9 +994,17 @@ func (ep *endpoints) CreateTemplateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.ExecutionRequestCommon == nil {
+		req.ExecutionRequestCommon = &state.ExecutionRequestCommon{}
+	}
+	req.OwnerID = ep.verifiedOwner(r, req.OwnerID)
 	if len(req.OwnerID) == 0 {
 		ep.encodeError(w, exceptions.MalformedInput{
 			ErrorString: fmt.Sprintf("request payload must contain [owner_id]; the run_tags field is deprecated for the v7 endpoint.")})
+		return
+	}
+	if err = ep.policy.CheckServiceAccount(req.ExecutionRequestCommon); err != nil {
+		ep.encodeError(w, err)
 		return
 	}
 
@@ -1030,6 +1096,11 @@ func (ep *endpoints) CreateTemplate(w http.ResponseWriter, r *http.Request) {
 	err := ep.decodeRequest(r, &req)
 	if err != nil {
 		ep.encodeError(w, exceptions.MalformedInput{ErrorString: err.Error()})
+		return
+	}
+
+	if err = ep.policy.CheckImage(req.Image); err != nil {
+		ep.encodeError(w, err)
 		return
 	}
 

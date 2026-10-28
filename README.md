@@ -231,6 +231,36 @@ The simplest way to deploy for very light usage is to avoid a reverse proxy and 
 
 	See [docker run](https://docs.docker.com/engine/reference/run/) for more details
 
+### Authentication and Authorization
+
+Every API route except `GET /api/v6/health` requires an `Authorization: Bearer <api key>` header. Requests without a valid key get `401`; keys without the required role get `403`.
+
+Keys are configured as SHA-256 digests in `http_server_api_keys` (or the comma separated `HTTP_SERVER_API_KEYS` environment variable), one entry per caller:
+
+```
+<identity>:<role>[+<role>...]:<sha256 hex of the key>
+```
+
+Generate a key and its entry with `KEY=$(openssl rand -hex 32); echo "alice@example.com:user:$(printf %s "$KEY" | sha256sum | cut -d' ' -f1)"`.
+
+| Role | Allows |
+| ---- | ------ |
+| `user` | Reading definitions, runs, logs, templates, clusters and workers; creating/updating/deleting definitions and templates; launching and stopping runs |
+| `operator` | Creating, updating and deleting clusters; updating workers |
+| `worker` | Reporting run status (`PUT /{run_id}/status`); no other role can do this |
+
+The run owner (`owner_id` / `user`) and the user recorded when a run is stopped come from the authenticated identity; `run_tags.owner_id`, `owner_id` and identity headers in the request are ignored.
+
+Launch requests may only set `service_account` to `eks_default_service_account`, `emr_default_service_account` or an entry in `allowed_service_accounts`; anything else is rejected with `400`. When `allowed_image_registries` is set, definition and template images must come from one of those registries.
+
+Reserved run environment variables (`FLOTILLA_RUN_ID`, `FLOTILLA_RUN_OWNER_ID` / `owner_id_var`, ...) supplied in a launch request's `env` are dropped.
+
+API keys are reusable bearer credentials: only expose Flotilla over TLS (terminate HTTPS at your load balancer or proxy) and never over plain HTTP outside localhost.
+
+The server refuses to start when no keys are configured. For local development only, set `http_server_auth_disabled: true` to turn authentication off.
+
+The UI sends `REACT_APP_API_TOKEN` (if set at build time) as its bearer token. That token is embedded in the static bundle and readable by anyone who can load the UI, so use it only for local development (with `docker-compose`, set `FLOTILLA_UI_API_TOKEN` to the key and add its `user`-role digest to `FLOTILLA_API_KEYS`). In production leave it unset and serve the UI and API behind an SSO proxy that injects a per-user `Authorization` header.
+
 ### Configuration In Detail
 
 The variables in `conf/config.yml` are sensible defaults. Most should be left alone unless you're developing flotilla itself. However, there are a few you may want to change in a production environment.
@@ -265,6 +295,10 @@ The variables in `conf/config.yml` are sensible defaults. Most should be left al
 | `eks_job_ttl` | default job ttl in seconds |
 | `eks_job_queue` | SQS job queue - the api places the jobs on this queue and the submit worker asynchronously submits it to Kubernetes/EKS |
 | `eks.service_account` | Kubernetes service account to use for jobs. |
+| `http_server_api_keys` | API key entries `<identity>:<roles>:<sha256>`; see [Authentication and Authorization](#authentication-and-authorization) |
+| `http_server_auth_disabled` | Set to `true` to disable API authentication (local development only) |
+| `allowed_service_accounts` | Extra service accounts launch requests may select |
+| `allowed_image_registries` | If set, registries that definition and template images must come from |
 
 ## Development
 

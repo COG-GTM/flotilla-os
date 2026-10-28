@@ -420,11 +420,16 @@ func (es *executionService) constructEnviron(run state.Run, env *state.EnvList) 
 		i++
 	}
 	if env != nil {
-		for j, e := range *env {
-			runEnv[i+j] = e
+		for _, e := range *env {
+			// Reserved values (run id, verified owner) must not be overridden by the caller.
+			if _, reserved := es.reservedEnv[e.Name]; reserved {
+				continue
+			}
+			runEnv[i] = e
+			i++
 		}
 	}
-	return state.EnvList(runEnv)
+	return state.EnvList(runEnv[:i])
 }
 
 // List returns a list of Runs

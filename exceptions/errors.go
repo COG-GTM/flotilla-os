@@ -34,3 +34,25 @@ type MissingResource struct {
 func (e MissingResource) Error() string {
 	return e.ErrorString
 }
+
+//
+// Unauthenticated describes a request without valid credentials
+//
+type Unauthenticated struct {
+	ErrorString string
+}
+
+func (e Unauthenticated) Error() string {
+	return e.ErrorString
+}
+
+//
+// Forbidden describes an authenticated caller that lacks the required role
+//
+type Forbidden struct {
+	ErrorString string
+}
+
+func (e Forbidden) Error() string {
+	return e.ErrorString
+}

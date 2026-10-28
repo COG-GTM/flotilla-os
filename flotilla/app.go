@@ -86,6 +86,14 @@ func NewApp(conf config.Config,
 	if err != nil {
 		return app, errors.Wrap(err, "problem initializing definition service")
 	}
+	authenticator, err := NewAuthenticator(conf)
+	if err != nil {
+		return app, errors.Wrap(err, "problem initializing API authentication")
+	}
+	if authenticator.Disabled() {
+		_ = log.Log("level", "warn", "message", "API authentication is DISABLED (http_server_auth_disabled); do not expose this server")
+	}
+	launchPolicy := NewLaunchPolicy(conf)
 	ep := endpoints{
 		executionService:  executionService,
 		eksLogService:     eksLogService,
@@ -94,6 +102,8 @@ func NewApp(conf config.Config,
 		logger:            log,
 		middlewareClient:  middlewareClient,
 		definitionService: definitionService,
+		auth:              authenticator,
+		policy:            launchPolicy,
 	}
 
 	app.configureRoutes(ep)
@@ -130,6 +140,7 @@ func (app *App) configureRoutes(ep endpoints) {
 	c := cors.New(cors.Options{
 		AllowedOrigins: app.corsAllowedOrigins,
 		AllowedMethods: []string{"GET", "DELETE", "POST", "PUT"},
+		AllowedHeaders: []string{"Authorization", "Content-Type", "Accept"},
 	})
 	app.handler = c.Handler(router)
 }

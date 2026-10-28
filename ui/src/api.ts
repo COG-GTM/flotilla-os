@@ -20,6 +20,11 @@ if (baseURL === undefined) {
   throw new Error(err)
 }
 
-const client = new FlotillaClient({ baseURL })
+const token = process.env.REACT_APP_API_TOKEN
+
+const client = new FlotillaClient({
+  baseURL,
+  headers: token ? { Authorization: `Bearer ${token}` } : {},
+})
 
 export default client
