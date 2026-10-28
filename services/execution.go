@@ -346,7 +346,10 @@ func (es *executionService) constructBaseRunFromExecutable(ctx context.Context, 
 
 	if *fields.Engine == state.EKSSparkEngine {
 		if req.GetExecutionRequestCommon().SparkExtension == nil {
-			return run, errors.New("spark_extension can't be nil, when using eks-spark engine type")
+			return run, exceptions.MalformedInput{ErrorString: "spark_extension can't be nil, when using eks-spark engine type"}
+		}
+		if err := engine.ValidateSparkExtension(req.GetExecutionRequestCommon().SparkExtension); err != nil {
+			return run, err
 		}
 		fields.SparkExtension = req.GetExecutionRequestCommon().SparkExtension
 		reAttemptRate, _ := es.stateManager.GetPodReAttemptRate(ctx)

@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/stitchfix/flotilla-os/tracing"
+	"runtime/debug"
 
 	"github.com/stitchfix/flotilla-os/utils"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/go-redis/redis"
 	"github.com/stitchfix/flotilla-os/config"
 	"github.com/stitchfix/flotilla-os/execution/engine"
@@ -161,9 +163,9 @@ func (sw *submitWorker) runOnce(ctx context.Context) {
 
 				// Execute the run using the execution engine.
 				if run.Engine == nil || *run.Engine == state.EKSEngine {
-					launched, retryable, err = sw.eksEngine.Execute(runCtx, d, run, sw.sm)
+					launched, retryable, err = sw.executeSafely(runCtx, sw.eksEngine, d, run)
 				} else {
-					launched, retryable, err = sw.emrEngine.Execute(runCtx, d, run, sw.sm)
+					launched, retryable, err = sw.executeSafely(runCtx, sw.emrEngine, d, run)
 				}
 
 				break
@@ -181,7 +183,7 @@ func (sw *submitWorker) runOnce(ctx context.Context) {
 
 				// Execute the run using the execution engine.
 				sw.log.Log("level", "info", "message", "Submitting", "run_id", run.RunID)
-				launched, retryable, err = sw.eksEngine.Execute(runCtx, tpl, run, sw.sm)
+				launched, retryable, err = sw.executeSafely(runCtx, sw.eksEngine, tpl, run)
 				break
 			default:
 				// If executable type is invalid; log message and continue processing
@@ -232,6 +234,24 @@ func (sw *submitWorker) runOnce(ctx context.Context) {
 		}
 		childSpan.Finish()
 	}
+}
+
+// executeSafely runs eng.Execute and converts a panic into a non-retryable
+// error so a single malformed run cannot crash the process or be redelivered.
+func (sw *submitWorker) executeSafely(ctx context.Context, eng engine.Engine, executable state.Executable, run state.Run) (launched state.Run, retryable bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			sw.log.Log("level", "error", "message", "Recovered panic while executing run", "run_id", run.RunID, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
+			launched = run
+			launched.ExitReason = aws.String("Run submission failed with an internal error")
+			launched.ExitCode = aws.Int64(-1)
+			launched.StartedAt = run.QueuedAt
+			launched.FinishedAt = run.QueuedAt
+			retryable = false
+			err = fmt.Errorf("panic while executing run %s: %v", run.RunID, r)
+		}
+	}()
+	return eng.Execute(ctx, executable, run, sw.sm)
 }
 
 func (sw *submitWorker) logFailedToGetExecutableMessage(run state.Run, err error) {

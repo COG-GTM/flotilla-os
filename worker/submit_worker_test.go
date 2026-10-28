@@ -213,3 +213,44 @@ func TestSubmitWorker_Run5(t *testing.T) {
 		}
 	}
 }
+
+type panickingEngine struct {
+	*testutils.ImplementsAllTheThings
+}
+
+func (p panickingEngine) Execute(ctx context.Context, executable state.Executable, run state.Run, manager state.Manager) (state.Run, bool, error) {
+	p.Calls = append(p.Calls, "Execute")
+	var conf *state.Conf
+	_ = *conf.Name
+	return run, false, nil
+}
+
+func TestSubmitWorker_RecoversEnginePanic(t *testing.T) {
+	// A panicking engine must not crash the worker: the run is stopped and acked.
+	worker, imp := setUpSubmitWorkerTest1(t)
+	sparkEngine := state.EKSSparkEngine
+	run := imp.Runs["run:cupcake"]
+	run.Engine = &sparkEngine
+	imp.Runs["run:cupcake"] = run
+	worker.emrEngine = panickingEngine{imp}
+
+	worker.runOnce(context.Background())
+
+	expected := []string{"PollRuns", "PollRuns", "GetRun", "GetDefinition", "Execute", "UpdateRun", "RunReceipt.Done"}
+	if len(imp.Calls) != len(expected) {
+		t.Fatalf("Unexpected calls, expected %v but was %v", expected, imp.Calls)
+	}
+	for i, call := range imp.Calls {
+		if expected[i] != call {
+			t.Errorf("Expected call %v to be %s but was %s", i, expected[i], call)
+		}
+	}
+
+	updated, _ := imp.GetRun(context.Background(), "run:cupcake")
+	if updated.Status != state.StatusStopped {
+		t.Errorf("Expected run to be Stopped after engine panic, got %s", updated.Status)
+	}
+	if updated.ExitReason == nil || *updated.ExitReason == "" {
+		t.Errorf("Expected an exit reason to be recorded after engine panic")
+	}
+}
