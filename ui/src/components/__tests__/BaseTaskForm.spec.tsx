@@ -1,7 +1,6 @@
 import * as React from "react"
-import { mount } from "enzyme"
-import { Formik, FastField } from "formik"
-import { FormGroup } from "@blueprintjs/core"
+import { Formik } from "formik"
+import { render, screen } from "../../test-utils"
 import {
   groupNameFieldSpec,
   imageFieldSpec,
@@ -12,147 +11,95 @@ import {
   cpuFieldSpec,
 } from "../../helpers/taskFormHelpers"
 import BaseTaskForm from "../BaseTaskForm"
-import EnvFieldArray from "../EnvFieldArray"
-import { Env } from "../../types"
-import FieldError from "../FieldError"
+import { UpdateTaskPayload } from "../../types"
 
-jest.mock("../../helpers/FlotillaClient")
+vi.hoisted(() => {
+  process.env.REACT_APP_BASE_URL_DEV =
+    process.env.REACT_APP_BASE_URL_DEV || "http://localhost"
+})
+vi.mock("../../helpers/FlotillaClient", async () => {
+  const { default: createMockClient } = await import(
+    "../../helpers/__mocks__/FlotillaClient"
+  )
+  // The shared mock's arrow-function implementation can't be called with `new`
+  // under Vitest, so wrap it in a constructible function.
+  return {
+    default: function FlotillaClient() {
+      return createMockClient()
+    },
+  }
+})
 
 describe("BaseTaskForm", () => {
-  it("renders the correct fields", () => {
-    const groupNameInitialValue = "my_group_name"
-    const imageInitialValue = "my_image"
-    const commandInitialValue = "my_command"
-    const memoryInitialValue = 1024
-    const cpuInitialValue = 512
-    const tagsInitialValue = ["a", "b", "c"]
-    const envInitialValue: Env[] = []
-    const wrapper = mount(
-      <Formik
-        initialValues={{
-          [groupNameFieldSpec.name]: groupNameInitialValue,
-          [imageFieldSpec.name]: imageInitialValue,
-          [commandFieldSpec.name]: commandInitialValue,
-          [memoryFieldSpec.name]: memoryInitialValue,
-          [cpuFieldSpec.name]: cpuInitialValue,
-          [tagsFieldSpec.name]: tagsInitialValue,
-          [envFieldSpec.name]: envInitialValue,
-        }}
-        onSubmit={jest.fn()}
-      >
-        {({ values, setFieldValue, errors }) => {
-          return (
-            <BaseTaskForm
-              values={values}
-              setFieldValue={setFieldValue}
-              errors={errors}
-            />
-          )
-        }}
+  it("renders the correct fields", async () => {
+    const initialValues: UpdateTaskPayload = {
+      group_name: "my_group_name",
+      image: "my_image",
+      command: "my_command",
+      memory: 1024,
+      cpu: 512,
+      tags: ["a", "b", "c"],
+      env: [],
+    }
+    render(
+      <Formik initialValues={initialValues} onSubmit={vi.fn()}>
+        {({ values, setFieldValue, errors }) => (
+          <BaseTaskForm
+            values={values}
+            setFieldValue={setFieldValue}
+            errors={errors}
+          />
+        )}
       </Formik>
     )
 
-    const formGroups = wrapper.find(FormGroup)
-    const fields = wrapper.find(FastField)
+    // Each of the six form groups renders its label and helper text.
+    ;[
+      groupNameFieldSpec,
+      imageFieldSpec,
+      commandFieldSpec,
+      cpuFieldSpec,
+      memoryFieldSpec,
+      tagsFieldSpec,
+    ].forEach(spec => {
+      expect(screen.getByText(spec.label)).toBeInTheDocument()
+      if (spec.description) {
+        expect(screen.getByText(spec.description)).toBeInTheDocument()
+      }
+    })
 
-    // Ensure that components have the correct lengths.
-    expect(formGroups).toHaveLength(6)
-    expect(fields).toHaveLength(6)
-    expect(wrapper.find(EnvFieldArray)).toHaveLength(1)
-    expect(wrapper.find(FieldError)).toHaveLength(0)
-
-    // Group name field.
-    const groupNameFieldIndex = 0
-    expect(formGroups.at(groupNameFieldIndex).props().label).toEqual(
-      groupNameFieldSpec.label
-    )
-    expect(formGroups.at(groupNameFieldIndex).props().helperText).toEqual(
-      groupNameFieldSpec.description
-    )
-    expect(fields.at(groupNameFieldIndex).props().name).toEqual(
-      groupNameFieldSpec.name
-    )
-    expect(fields.at(groupNameFieldIndex).props().value).toEqual(
-      groupNameInitialValue
-    )
-
-    // Image field.
-    const imageFieldIndex = 1
-    expect(formGroups.at(imageFieldIndex).props().label).toEqual(
-      imageFieldSpec.label
-    )
-    expect(formGroups.at(imageFieldIndex).props().helperText).toEqual(
-      imageFieldSpec.description
-    )
-    expect(fields.at(imageFieldIndex).props().name).toEqual(imageFieldSpec.name)
+    // Group name field (select) shows its initial value once groups load.
     expect(
-      fields
-        .at(imageFieldIndex)
-        .find("input")
-        .props().value
-    ).toEqual(imageInitialValue)
+      await screen.findByText(initialValues.group_name)
+    ).toBeInTheDocument()
 
-    // Command field.
-    const commandFieldIndex = 2
-    expect(formGroups.at(commandFieldIndex).props().label).toEqual(
-      commandFieldSpec.label
+    // Image, command, cpu and memory fields are bound to their values.
+    expect(screen.getByDisplayValue(initialValues.image)).toHaveAttribute(
+      "name",
+      imageFieldSpec.name
     )
-    expect(formGroups.at(commandFieldIndex).props().helperText).toEqual(
-      commandFieldSpec.description
-    )
-    expect(fields.at(commandFieldIndex).props().name).toEqual(
+    expect(screen.getByDisplayValue(initialValues.command)).toHaveAttribute(
+      "name",
       commandFieldSpec.name
     )
-    expect(
-      fields
-        .at(commandFieldIndex)
-        .find("textarea")
-        .props().value
-    ).toEqual(commandInitialValue)
-
-    // CPU field.
-    const cpuFieldIndex = 3
-    expect(formGroups.at(cpuFieldIndex).props().label).toEqual(
-      cpuFieldSpec.label
-    )
-    expect(formGroups.at(cpuFieldIndex).props().helperText).toEqual(
-      cpuFieldSpec.description
-    )
-    expect(fields.at(cpuFieldIndex).props().name).toEqual(cpuFieldSpec.name)
-    expect(
-      fields
-        .at(cpuFieldIndex)
-        .find("input")
-        .props().value
-    ).toEqual(cpuInitialValue)
-
-    // Memory field.
-    const memoryFieldIndex = 4
-    expect(formGroups.at(memoryFieldIndex).props().label).toEqual(
-      memoryFieldSpec.label
-    )
-    expect(formGroups.at(memoryFieldIndex).props().helperText).toEqual(
-      memoryFieldSpec.description
-    )
-    expect(fields.at(memoryFieldIndex).props().name).toEqual(
-      memoryFieldSpec.name
+    expect(screen.getByDisplayValue(String(initialValues.cpu))).toHaveAttribute(
+      "name",
+      cpuFieldSpec.name
     )
     expect(
-      fields
-        .at(memoryFieldIndex)
-        .find("input")
-        .props().value
-    ).toEqual(memoryInitialValue)
+      screen.getByDisplayValue(String(initialValues.memory))
+    ).toHaveAttribute("name", memoryFieldSpec.name)
 
-    // Tags field.
-    const tagsFieldIndex = 5
-    expect(formGroups.at(tagsFieldIndex).props().label).toEqual(
-      tagsFieldSpec.label
-    )
-    expect(formGroups.at(tagsFieldIndex).props().helperText).toEqual(
-      tagsFieldSpec.description
-    )
-    expect(fields.at(tagsFieldIndex).props().name).toEqual(tagsFieldSpec.name)
-    expect(fields.at(tagsFieldIndex).props().value).toEqual(tagsInitialValue)
+    // Tags field (multi select) shows each initial tag.
+    initialValues.tags.forEach(tag => {
+      expect(screen.getByText(tag)).toBeInTheDocument()
+    })
+
+    // The env field array is rendered.
+    expect(screen.getByText(envFieldSpec.label)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument()
+
+    // No field errors are rendered for valid initial values.
+    expect(screen.queryByText(/required/i)).not.toBeInTheDocument()
   })
 })

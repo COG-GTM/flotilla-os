@@ -1,120 +1,111 @@
 import * as React from "react"
-import flushPromiseQueue from "flush-promises"
-import { mount, ReactWrapper } from "enzyme"
-import UpdateTaskForm, {
-  ConnectedProps as Props,
-  UpdateTaskForm as UnconnectedUpdateTaskForm,
-} from "../UpdateTaskForm"
+import { Route } from "react-router-dom"
+import { render, screen, userEvent, waitFor } from "../../test-utils"
+import UpdateTaskForm from "../UpdateTaskForm"
 import api from "../../api"
-import { Formik } from "formik"
-import {
-  createMockRouteComponentProps,
-  mockFormikActions,
-  createMockTaskObject,
-} from "../../helpers/testHelpers"
-import Request, { RequestStatus } from "../Request"
-import BaseTaskForm from "../BaseTaskForm"
-import { TaskContext, TaskCtx as TaskContextTypeDef } from "../Task"
+import { createMockTaskObject } from "../../helpers/testHelpers"
+import { RequestStatus } from "../Request"
+import { TaskContext, TaskCtx } from "../Task"
 
-jest.mock("../../helpers/FlotillaClient")
+vi.hoisted(() => {
+  process.env.REACT_APP_BASE_URL_DEV =
+    process.env.REACT_APP_BASE_URL_DEV || "http://localhost"
+})
+vi.mock("../../helpers/FlotillaClient", async () => {
+  const { default: createMockClient } = await import(
+    "../../helpers/__mocks__/FlotillaClient"
+  )
+  // The shared mock's arrow-function implementation can't be called with `new`
+  // under Vitest, so wrap it in a constructible function.
+  return {
+    default: function FlotillaClient() {
+      return createMockClient()
+    },
+  }
+})
 
 describe("UpdateTaskForm", () => {
   const DEFINITION_ID = "my_def_id"
-
-  // Instantiate mock route component props object.
-  const mockRouteComponentProps = createMockRouteComponentProps({
-    path: "/tasks/create",
-    url: "/tasks/create",
-    params: {},
-  })
-
-  // Instantiate props object.
-  const props: Props = {
-    ...mockRouteComponentProps,
-    history: {
-      ...mockRouteComponentProps.history,
-      push: jest.fn(),
-    },
-    definitionID: DEFINITION_ID,
-  }
-
-  // Instantiate context object.
-  const mockTaskCtx: TaskContextTypeDef = {
-    data: createMockTaskObject({ definition_id: DEFINITION_ID }),
+  const task = createMockTaskObject({ definition_id: DEFINITION_ID })
+  const mockTaskCtx: TaskCtx = {
+    data: task,
     requestStatus: RequestStatus.READY,
     isLoading: false,
     error: null,
-    request: jest.fn(),
+    request: vi.fn(),
     basePath: "",
     definitionID: DEFINITION_ID,
     receivedAt: new Date(),
   }
-
-  let wrapper: ReactWrapper
+  let pathname = ""
 
   beforeEach(() => {
-    jest.clearAllMocks()
-    wrapper = mount(
+    vi.clearAllMocks()
+    render(
       <TaskContext.Provider value={mockTaskCtx}>
-        <UpdateTaskForm {...props} />
-      </TaskContext.Provider>
+        <Route
+          path="/"
+          render={routeProps => {
+            pathname = routeProps.location.pathname
+            return (
+              <UpdateTaskForm {...routeProps} definitionID={DEFINITION_ID} />
+            )
+          }}
+        />
+      </TaskContext.Provider>,
+      { initialEntries: [`/tasks/${DEFINITION_ID}/update`] }
     )
   })
 
   it("renders the correct components", () => {
-    // Note: there will be more than 1 Request component due to those wrapping
-    // GroupNameSelect, etc.
-    expect(wrapper.find(Request).length).toBeGreaterThanOrEqual(1)
-    expect(
-      wrapper
-        .find(Request)
-        .at(0)
-        .props().requestFn
-    ).toBe(api.updateTask)
-    expect(
-      wrapper
-        .find(Request)
-        .at(0)
-        .props().shouldRequestOnMount
-    ).toEqual(false)
-
-    expect(wrapper.find(Formik)).toHaveLength(1)
-    expect(wrapper.find(UnconnectedUpdateTaskForm)).toHaveLength(1)
-    expect(wrapper.find(BaseTaskForm)).toHaveLength(1)
-    expect(wrapper.find("button#submitButton")).toHaveLength(1)
+    // The request is only made on submit, not on mount.
+    expect(api.updateTask).toHaveBeenCalledTimes(0)
+    // BaseTaskForm fields are prefilled from the task context.
+    expect(screen.getByDisplayValue(task.image)).toHaveAttribute(
+      "name",
+      "image"
+    )
+    expect(screen.getByDisplayValue(task.command)).toHaveAttribute(
+      "name",
+      "command"
+    )
+    // Alias cannot be updated.
+    expect(screen.queryByDisplayValue(task.alias)).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Submit" })).toHaveAttribute(
+      "id",
+      "submitButton"
+    )
   })
 
   it("calls api.updateTask when submitted", async () => {
-    // At this point, we don't expect any functions to have been called.
     expect(api.updateTask).toHaveBeenCalledTimes(0)
-    expect(props.history.push).toHaveBeenCalledTimes(0)
     expect(mockTaskCtx.request).toHaveBeenCalledTimes(0)
 
-    // Manually invoke Formik's onSubmit prop.
-    wrapper
-      .find(Formik)
-      .props()
-      .onSubmit(
-        {
-          env: [{ name: "foo", value: "bar" }],
-          image: "my_image",
-          group_name: "my_group",
-          alias: "my_alias",
-          memory: 1024,
-          command: "my_command",
-          tags: ["a", "b"],
-        },
-        mockFormikActions
-      )
+    await userEvent.click(screen.getByRole("button", { name: "Submit" }))
 
-    // Expect FlotillaClient's `createTask` method to be invoked once.
-    expect(api.updateTask).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(api.updateTask).toHaveBeenCalledTimes(1)
+    })
+    expect(api.updateTask).toHaveBeenCalledWith({
+      definitionID: DEFINITION_ID,
+      data: {
+        env: task.env,
+        image: task.image,
+        group_name: task.group_name,
+        memory: task.memory,
+        cpu: task.cpu,
+        command: task.command,
+        tags: task.tags,
+      },
+    })
 
-    // Flush the promise queue.
-    await flushPromiseQueue()
-
-    // Expect `onSuccess` and `push` to be invoked once.
-    expect(props.history.push).toHaveBeenCalledTimes(1)
-    expect(mockTaskCtx.request).toHaveBeenCalledTimes(1)
+    // On success, the task is re-requested and the user returns to it.
+    await waitFor(() => {
+      expect(mockTaskCtx.request).toHaveBeenCalledTimes(1)
+    })
+    expect(mockTaskCtx.request).toHaveBeenCalledWith({
+      definitionID: DEFINITION_ID,
+    })
+    expect(pathname).toEqual(`/tasks/${DEFINITION_ID}`)
   })
 })

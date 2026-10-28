@@ -1,6 +1,6 @@
 import * as React from "react"
 import { isArray } from "lodash"
-import Creatable from "react-select/lib/Creatable"
+import Creatable from "react-select/creatable"
 import { SelectOption, MultiSelectProps } from "../types"
 import * as helpers from "../helpers/selectHelpers"
 
@@ -11,7 +11,7 @@ const GenericMultiSelect: React.FunctionComponent<MultiSelectProps> = props => {
   }
 
   return (
-    <Creatable<SelectOption>
+    <Creatable<SelectOption, true>
       value={value.map(helpers.stringToSelectOpt)}
       options={[]}
       onChange={option => {

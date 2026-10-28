@@ -46,14 +46,14 @@ const TaskDetails: React.FC<{}> = () => (
                         className={Classes.BUTTON}
                         to={`/tasks/${definitionID}/copy`}
                       >
-                        <div className="bp3-button-text">Copy</div>
+                        <div className={Classes.BUTTON_TEXT}>Copy</div>
                         <Icon icon="duplicate" />
                       </Link>
                       <Link
                         className={Classes.BUTTON}
                         to={`/tasks/${definitionID}/update`}
                       >
-                        <div className="bp3-button-text">Update</div>
+                        <div className={Classes.BUTTON_TEXT}>Update</div>
                         <Icon icon="edit" />
                       </Link>
                       <Link

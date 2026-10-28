@@ -1,111 +1,95 @@
 import * as React from "react"
-import flushPromiseQueue from "flush-promises"
-import { mount, ReactWrapper } from "enzyme"
-import CreateTaskForm, {
-  ConnectedProps as Props,
-  CreateTaskForm as UnconnectedCreateTaskForm,
-} from "../CreateTaskForm"
+import { Route } from "react-router-dom"
+import { render, screen, userEvent, waitFor } from "../../test-utils"
+import CreateTaskForm, { ConnectedProps } from "../CreateTaskForm"
 import api from "../../api"
-import { Formik } from "formik"
-import {
-  createMockRouteComponentProps,
-  mockFormikActions,
-} from "../../helpers/testHelpers"
-import Request from "../Request"
-import BaseTaskForm from "../BaseTaskForm"
+import { CreateTaskPayload } from "../../types"
 
-jest.mock("../../helpers/FlotillaClient")
+vi.hoisted(() => {
+  process.env.REACT_APP_BASE_URL_DEV =
+    process.env.REACT_APP_BASE_URL_DEV || "http://localhost"
+})
+vi.mock("../../helpers/FlotillaClient", async () => {
+  const { default: createMockClient } = await import(
+    "../../helpers/__mocks__/FlotillaClient"
+  )
+  // The shared mock's arrow-function implementation can't be called with `new`
+  // under Vitest, so wrap it in a constructible function.
+  return {
+    default: function FlotillaClient() {
+      return createMockClient()
+    },
+  }
+})
 
 describe("CreateTaskForm", () => {
-  // Instantiate mock route component props object.
-  const mockRouteComponentProps = createMockRouteComponentProps({
-    path: "/tasks/create",
-    url: "/tasks/create",
-    params: {},
-  })
-
-  // Instantiate props object.
-  const props: Props = {
-    ...mockRouteComponentProps,
-    history: {
-      ...mockRouteComponentProps.history,
-      push: jest.fn(),
-    },
-    initialValues: {
-      env: [{ name: "foo", value: "bar" }],
-      image: "my_image",
-      group_name: "my_group",
-      alias: "my_alias",
-      memory: 1024,
-      command: "my_command",
-      tags: ["a", "b"],
-      cpu: 512,
-    },
-    onSuccess: jest.fn(),
+  const initialValues: CreateTaskPayload = {
+    env: [{ name: "foo", value: "bar" }],
+    image: "my_image",
+    group_name: "my_group",
+    alias: "my_alias",
+    memory: 1024,
+    command: "my_command",
+    tags: ["a", "b"],
+    cpu: 512,
   }
-
-  let wrapper: ReactWrapper
+  const onSuccess = vi.fn()
+  let pathname = ""
 
   beforeEach(() => {
-    jest.clearAllMocks()
-    wrapper = mount(<CreateTaskForm {...props} />)
+    vi.clearAllMocks()
+    render(
+      <Route
+        path="/"
+        render={(routeProps: Omit<ConnectedProps, "initialValues">) => {
+          pathname = routeProps.location.pathname
+          return (
+            <CreateTaskForm
+              {...routeProps}
+              initialValues={initialValues}
+              onSuccess={onSuccess}
+            />
+          )
+        }}
+      />,
+      { initialEntries: ["/tasks/create"] }
+    )
   })
 
   it("renders the correct components", () => {
-    // Note: there will be more than 1 Request component due to those wrapping
-    // GroupNameSelect, etc.
-    expect(wrapper.find(Request).length).toBeGreaterThanOrEqual(1)
-    expect(
-      wrapper
-        .find(Request)
-        .at(0)
-        .props().requestFn
-    ).toBe(api.createTask)
-    expect(
-      wrapper
-        .find(Request)
-        .at(0)
-        .props().shouldRequestOnMount
-    ).toEqual(false)
-
-    expect(wrapper.find(Formik)).toHaveLength(1)
-    expect(wrapper.find(UnconnectedCreateTaskForm)).toHaveLength(1)
-    expect(wrapper.find(BaseTaskForm)).toHaveLength(1)
-    expect(wrapper.find('input[name="alias"]')).toHaveLength(1)
-    expect(wrapper.find("button#submitButton")).toHaveLength(1)
+    // The request is only made on submit, not on mount.
+    expect(api.createTask).toHaveBeenCalledTimes(0)
+    // Alias field plus the BaseTaskForm fields, bound to initial values.
+    expect(screen.getByDisplayValue(initialValues.alias)).toHaveAttribute(
+      "name",
+      "alias"
+    )
+    expect(screen.getByDisplayValue(initialValues.image)).toHaveAttribute(
+      "name",
+      "image"
+    )
+    expect(screen.getByRole("button", { name: "Submit" })).toHaveAttribute(
+      "id",
+      "submitButton"
+    )
   })
 
   it("calls api.createTask when submitted", async () => {
-    // At this point, we don't expect any functions to have been called.
     expect(api.createTask).toHaveBeenCalledTimes(0)
-    expect(props.onSuccess).toHaveBeenCalledTimes(0)
-    expect(props.history.push).toHaveBeenCalledTimes(0)
+    expect(onSuccess).toHaveBeenCalledTimes(0)
+    expect(pathname).toEqual("/tasks/create")
 
-    // Manually invoke Formik's onSubmit prop.
-    wrapper
-      .find(Formik)
-      .props()
-      .onSubmit(
-        {
-          env: [{ name: "foo", value: "bar" }],
-          image: "my_image",
-          group_name: "my_group",
-          alias: "my_alias",
-          memory: 1024,
-          command: "my_command",
-          tags: ["a", "b"],
-        },
-        mockFormikActions
-      )
+    await userEvent.click(screen.getByRole("button", { name: "Submit" }))
 
-    // Expect FlotillaClient's `createTask` method to be invoked once.
-    expect(api.createTask).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(api.createTask).toHaveBeenCalledTimes(1)
+    })
+    expect(api.createTask).toHaveBeenCalledWith({ data: initialValues })
 
-    // Flush the promise queue.
-    await flushPromiseQueue()
-
-    // Expect `onSuccess` and `push` to be invoked once.
-    expect(props.onSuccess).toHaveBeenCalledTimes(1)
-    expect(props.history.push).toHaveBeenCalledTimes(1)
+    // On success, onSuccess is invoked and the user is sent to the new task.
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledTimes(1)
+    })
+    expect(pathname).toEqual("/tasks/my_definition_id")
   })
 })
