@@ -30,6 +30,11 @@ func newServiceAccountPolicy(conf config.Config) serviceAccountPolicy {
 		byTeam:     map[string]map[string]bool{},
 		emrRoleArn: conf.GetStringMapString("emr_job_role_arn"),
 	}
+	// labels.team comes from the request body; only honour team grants when a
+	// middleware client is known to authenticate the caller and set it.
+	if !conf.GetBool("service_account_trust_team_label") {
+		return p
+	}
 	// Values are comma-separated so the map can also be supplied via env/flat config.
 	for team, accounts := range conf.GetStringMapString("service_account_allowlist_by_team") {
 		p.byTeam[strings.ToLower(strings.TrimSpace(team))] = toSet(strings.Split(accounts, ","))

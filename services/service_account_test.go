@@ -42,26 +42,31 @@ func TestExecutionService_ServiceAccountAllowlist(t *testing.T) {
 		labels    *state.Labels
 		wantErr   bool
 		wantSA    *string
-		forbidden string
+		trustTeam bool
 	}{
 		{name: "eks unset uses engine default", engine: state.EKSEngine},
 		{name: "eks blank is treated as unset", engine: state.EKSEngine, sa: strPtr("  ")},
 		{name: "eks default allowed", engine: state.EKSEngine, sa: strPtr("flotilla-job"), wantSA: strPtr("flotilla-job")},
 		{name: "eks global allowlist", engine: state.EKSEngine, sa: strPtr("flotilla-shared-job"), wantSA: strPtr("flotilla-shared-job")},
-		{name: "eks team allowlist", engine: state.EKSEngine, sa: strPtr("data-platform-reader"), labels: &dataPlatform, wantSA: strPtr("data-platform-reader")},
-		{name: "eks team allowlist case-insensitive team", engine: state.EKSEngine, sa: strPtr("data-platform-reader"), labels: &state.Labels{"team": "Data-Platform"}, wantSA: strPtr("data-platform-reader")},
+		{name: "eks team allowlist", trustTeam: true, engine: state.EKSEngine, sa: strPtr("data-platform-reader"), labels: &dataPlatform, wantSA: strPtr("data-platform-reader")},
+		{name: "eks team allowlist case-insensitive team", trustTeam: true, engine: state.EKSEngine, sa: strPtr("data-platform-reader"), labels: &state.Labels{"team": "Data-Platform"}, wantSA: strPtr("data-platform-reader")},
 		{name: "eks privileged account rejected", engine: state.EKSEngine, sa: strPtr("data-admin"), wantErr: true},
-		{name: "eks other team's account rejected", engine: state.EKSEngine, sa: strPtr("data-platform-reader"), labels: &otherTeam, wantErr: true},
-		{name: "eks team account rejected without team label", engine: state.EKSEngine, sa: strPtr("data-platform-reader"), wantErr: true},
+		{name: "eks other team's account rejected", trustTeam: true, engine: state.EKSEngine, sa: strPtr("data-platform-reader"), labels: &otherTeam, wantErr: true},
+		{name: "eks team label ignored unless trusted", engine: state.EKSEngine, sa: strPtr("data-platform-reader"), labels: &dataPlatform, wantErr: true},
+		{name: "spark team label ignored unless trusted", engine: state.EKSSparkEngine, sa: strPtr("data-platform-etl"), labels: &dataPlatform, wantErr: true},
+		{name: "eks team account rejected without team label", trustTeam: true, engine: state.EKSEngine, sa: strPtr("data-platform-reader"), wantErr: true},
 		{name: "eks emr default is not an eks default", engine: state.EKSEngine, sa: strPtr("flotilla-spark-job"), wantErr: true},
 		{name: "spark unset uses emr default", engine: state.EKSSparkEngine},
-		{name: "spark team account with role", engine: state.EKSSparkEngine, sa: strPtr("data-platform-etl"), labels: &dataPlatform, wantSA: strPtr("data-platform-etl")},
-		{name: "spark mapped role outside allowlist rejected", engine: state.EKSSparkEngine, sa: strPtr("data-platform-etl"), labels: &otherTeam, wantErr: true},
+		{name: "spark team account with role", trustTeam: true, engine: state.EKSSparkEngine, sa: strPtr("data-platform-etl"), labels: &dataPlatform, wantSA: strPtr("data-platform-etl")},
+		{name: "spark mapped role outside allowlist rejected", trustTeam: true, engine: state.EKSSparkEngine, sa: strPtr("data-platform-etl"), labels: &otherTeam, wantErr: true},
 		{name: "spark allowlisted account without role rejected", engine: state.EKSSparkEngine, sa: strPtr("flotilla-shared-job"), wantErr: true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.trustTeam {
+				t.Setenv("SERVICE_ACCOUNT_TRUST_TEAM_LABEL", "true")
+			}
 			es, imp := setUp(t)
 			run, err := es.CreateDefinitionRunByDefinitionID(context.Background(), "B", launchRequest(tc.engine, tc.sa, tc.labels))
 			if tc.wantErr {

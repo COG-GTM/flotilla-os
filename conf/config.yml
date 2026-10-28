@@ -47,3 +47,4 @@ service_account_allowlist:
   - flotilla-shared-job
 service_account_allowlist_by_team:
   data-platform: 'data-platform-etl, data-platform-reader'
+service_account_trust_team_label: false
