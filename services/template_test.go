@@ -12,6 +12,9 @@ import (
 
 func setUpTemplateServiceTest(t *testing.T) (TemplateService, *testutils.ImplementsAllTheThings) {
 	memory := int64(512)
+	gpu := int64(0)
+	cpu := int64(256)
+	ara := true
 	imp := testutils.ImplementsAllTheThings{
 		T: t,
 		Templates: map[string]state.Template{
@@ -22,8 +25,11 @@ func setUpTemplateServiceTest(t *testing.T) (TemplateService, *testutils.Impleme
 				Schema:          state.TemplateJSONSchema{"type": "object"},
 				CommandTemplate: "echo hi",
 				ExecutableResources: state.ExecutableResources{
-					Image:  "image:latest",
-					Memory: &memory,
+					Image:                      "image:latest",
+					Memory:                     &memory,
+					Gpu:                        &gpu,
+					Cpu:                        &cpu,
+					AdaptiveResourceAllocation: &ara,
 				},
 			},
 		},
@@ -65,6 +71,7 @@ func TestTemplateService_Create_RejectsEnvFunction(t *testing.T) {
 func TestTemplateService_Create_DefaultsAdaptiveResourceAllocation(t *testing.T) {
 	ts, imp := setUpTemplateServiceTest(t)
 	memory := int64(512)
+	gpu := int64(0)
 	req := state.CreateTemplateRequest{
 		TemplateName:    "existing",
 		Schema:          state.TemplateJSONSchema{"type": "object"},
@@ -72,6 +79,7 @@ func TestTemplateService_Create_DefaultsAdaptiveResourceAllocation(t *testing.T)
 		ExecutableResources: state.ExecutableResources{
 			Image:  "image:latest",
 			Memory: &memory,
+			Gpu:    &gpu,
 		},
 	}
 
