@@ -227,7 +227,7 @@ The simplest way to deploy for very light usage is to avoid a reverse proxy and 
 	> -----
 	> * Flotilla uses [viper](https://github.com/spf13/viper) for configuration so you can override any of the default configuration under `conf/` using run time environment variables passed to `docker run`
 	> * In most realistic deploys you'll likely want to configure a reverse proxy to sit in front of the flotilla container. See the docs [here](https://hub.docker.com/_/nginx/)
-	> * The API requires authentication. Set `HTTP_SERVER_API_KEYS` (see below) or the server will refuse to start. Clients send `Authorization: Bearer <token>`.
+	> * The API requires authentication. Set `HTTP_SERVER_API_KEYS` (see below) or the server will refuse to start. Clients send `Authorization: Bearer <token>`, so terminate TLS in front of flotilla (for example at the reverse proxy) and never expose the plain HTTP port to untrusted networks.
 
 
 	See [docker run](https://docs.docker.com/engine/reference/run/) for more details

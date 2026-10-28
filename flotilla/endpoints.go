@@ -663,6 +663,7 @@ func (ep *endpoints) ExtractUserInfo(r *http.Request) state.UserInfo {
 	var userInfo state.UserInfo
 	if caller, ok := callerFromContext(r.Context()); ok && !caller.Anonymous {
 		userInfo.Name = caller.Identity
+		userInfo.Email = caller.Identity
 		return userInfo
 	}
 	for name, headers := range r.Header {
