@@ -6,7 +6,7 @@ const ISO8601AttributeValue: React.FunctionComponent<{
   time: string | null | undefined
   inline?: boolean
   verbose?: boolean
-}> = ({ time, inline, verbose }) => {
+}> = ({ time, inline, verbose = true }) => {
   return (
     <div
       style={{
@@ -23,10 +23,6 @@ const ISO8601AttributeValue: React.FunctionComponent<{
       )}
     </div>
   )
-}
-
-ISO8601AttributeValue.defaultProps = {
-  verbose: true,
 }
 
 export default ISO8601AttributeValue

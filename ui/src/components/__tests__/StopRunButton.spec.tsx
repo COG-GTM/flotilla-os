@@ -1,44 +1,57 @@
-import * as React from "react"
-import { MemoryRouter } from "react-router-dom"
-import { mount } from "enzyme"
 import ConnectedStopRunButton, { StopRunButton, Props } from "../StopRunButton"
-import Request, { RequestStatus } from "../Request"
+import { RequestStatus } from "../Request"
 import api from "../../api"
+import { render, screen, userEvent, within } from "../../test-utils"
+
+vi.mock("../../api", () => ({
+  default: { stopRun: vi.fn(() => Promise.resolve({})) },
+}))
+vi.mock("../Toaster", () => ({ default: { show: vi.fn() } }))
 
 const defaultProps: Props = {
   requestStatus: RequestStatus.NOT_READY,
   data: null,
   isLoading: false,
   error: null,
-  request: jest.fn(),
+  request: vi.fn(),
   definitionID: "definitionID",
   runID: "runID",
   receivedAt: new Date(),
 }
 
+// Opens the confirmation dialog and clicks its "Stop" (submit) button.
+async function confirmStop() {
+  const user = userEvent.setup()
+  await user.click(screen.getByRole("button", { name: "Stop" }))
+  const dialog = await screen.findByRole("dialog")
+  await user.click(within(dialog).getByRole("button", { name: "Stop" }))
+}
+
 describe("StopRunButton", () => {
-  it("calls props.request with the correct args when this.handleSubmitClick is called", () => {
-    const r = jest.fn()
-    const wrapper = mount<StopRunButton>(
-      <StopRunButton {...defaultProps} request={r} />
-    )
+  it("calls props.request with the correct args when the stop is confirmed", async () => {
+    const r = vi.fn()
+    render(<StopRunButton {...defaultProps} request={r} />)
     expect(r).toHaveBeenCalledTimes(0)
-    wrapper.instance().handleSubmitClick()
+
+    await confirmStop()
+
     expect(r).toHaveBeenCalledTimes(1)
     expect(r).toHaveBeenCalledWith({
-      definitionID: wrapper.prop("definitionID"),
-      runID: wrapper.prop("runID"),
+      definitionID: defaultProps.definitionID,
+      runID: defaultProps.runID,
     })
   })
 
-  it("provides api.stopRun as the requestFn", () => {
-    // Note: this is testing the connected component so it must be wrapper in
-    // a MemoryRouter component.
-    const wrapper = mount(
-      <MemoryRouter>
-        <ConnectedStopRunButton definitionID="id" runID="rid" />
-      </MemoryRouter>
-    )
-    expect(wrapper.find(Request).prop("requestFn")).toEqual(api.stopRun)
+  it("provides api.stopRun as the requestFn", async () => {
+    render(<ConnectedStopRunButton definitionID="id" runID="rid" />)
+    expect(api.stopRun).toHaveBeenCalledTimes(0)
+
+    await confirmStop()
+
+    expect(api.stopRun).toHaveBeenCalledTimes(1)
+    expect(api.stopRun).toHaveBeenCalledWith({
+      definitionID: "id",
+      runID: "rid",
+    })
   })
 })

@@ -1,22 +1,34 @@
-import * as React from "react"
-import { mount } from "enzyme"
-import { MemoryRouter } from "react-router-dom"
 import { Run, Props } from "../Run"
-import {
-  Run as RunType,
-  RunStatus,
-  ExecutionEngine,
-  NodeLifecycle,
-} from "../../types"
+import { RunStatus, ExecutionEngine, NodeLifecycle } from "../../types"
 import { RequestStatus } from "../Request"
-import { Provider } from "react-redux"
-import store from "../../state/store"
+import { createMockRunObject } from "../../helpers/testHelpers"
+import { render } from "../../test-utils"
 
-jest.mock("../../workers/index")
+// Child views (logs, pod events) fetch on mount; keep those requests pending
+// so this spec only exercises the run polling interval.
+vi.mock("../../api", () => {
+  const pending = () => new Promise<never>(() => {})
+  return {
+    default: {
+      getRunLog: vi.fn(pending),
+      getRunLogRaw: vi.fn(pending),
+      listRunEvents: vi.fn(pending),
+    },
+  }
+})
+vi.mock("../../workers/index")
 
-export type RunInstance = {}
+// jsdom has no ResizeObserver; the log viewer measures itself with one.
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+)
 
-const MockRun: RunType = {
+const MockRun = createMockRunObject({
   instance: {
     dns_name: "dns_name",
     instance_id: "instance_id",
@@ -41,15 +53,7 @@ const MockRun: RunType = {
   cpu: 100,
   memory: 100,
   queued_at: "2019-10-24T04:21:51",
-}
-
-const Proxy: React.FunctionComponent<Props> = props => (
-  <Provider store={store}>
-    <MemoryRouter>
-      <Run {...props} />
-    </MemoryRouter>
-  </Provider>
-)
+})
 
 const defaultProps: Props = {
   requestStatus: RequestStatus.READY,
@@ -57,24 +61,31 @@ const defaultProps: Props = {
   isLoading: false,
   error: null,
   runID: MockRun.run_id,
-  request: jest.fn(),
+  request: vi.fn(),
   query: {},
-  setQuery: jest.fn(),
+  setQuery: vi.fn(),
   receivedAt: new Date(),
+  shouldAutoscroll: true,
+  hasLogs: false,
+  isLogRequestIntervalActive: false,
+  dispatch: vi.fn(),
 }
 
 describe("Run", () => {
-  const realSet = Run.prototype.setRequestInterval
-  const realClear = Run.prototype.clearRequestInterval
+  let setRequestInterval: ReturnType<typeof vi.spyOn>
+  let clearRequestInterval: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
-    Run.prototype.setRequestInterval = jest.fn()
-    Run.prototype.clearRequestInterval = jest.fn()
+    setRequestInterval = vi
+      .spyOn(Run.prototype, "setRequestInterval")
+      .mockImplementation(() => {})
+    clearRequestInterval = vi
+      .spyOn(Run.prototype, "clearRequestInterval")
+      .mockImplementation(() => {})
   })
 
   afterEach(() => {
-    Run.prototype.setRequestInterval = realSet
-    Run.prototype.clearRequestInterval = realClear
+    vi.restoreAllMocks()
   })
 
   /**
@@ -82,11 +93,11 @@ describe("Run", () => {
    * interval to continuously fetch the run.
    */
   it("sets a request interval if the run isn't stopped on componentDidMount", () => {
-    expect(Run.prototype.setRequestInterval).toHaveBeenCalledTimes(0)
+    expect(setRequestInterval).toHaveBeenCalledTimes(0)
 
     // Mount a stopped run.
-    mount(
-      <Proxy
+    render(
+      <Run
         {...defaultProps}
         data={{
           ...MockRun,
@@ -94,94 +105,61 @@ describe("Run", () => {
         }}
       />
     )
-    expect(Run.prototype.setRequestInterval).toHaveBeenCalledTimes(0)
+    expect(setRequestInterval).toHaveBeenCalledTimes(0)
 
     // Mount a running one.
-    mount(<Proxy {...defaultProps} />)
-    expect(Run.prototype.setRequestInterval).toHaveBeenCalledTimes(1)
+    render(<Run {...defaultProps} />)
+    expect(setRequestInterval).toHaveBeenCalledTimes(1)
   })
 
   it("sets the request interval if props.requestStatus changes from NOT_READY to READY and the run is not stopped.", () => {
-    // Request has not completed.
-    const stoppedWrapper = mount(
-      <Proxy
-        requestStatus={RequestStatus.NOT_READY}
-        data={null}
-        isLoading={false}
-        error={null}
-        runID="a"
-        request={jest.fn()}
-        query={{}}
-        setQuery={jest.fn()}
-        receivedAt={new Date()}
-      />
-    )
-    expect(Run.prototype.setRequestInterval).toHaveBeenCalledTimes(0)
-
-    // Set requestStatus to READY.
-    stoppedWrapper.setProps({
-      requestStatus: RequestStatus.READY,
-      data: {
-        ...MockRun,
-        status: RunStatus.STOPPED,
-      },
-    })
-
-    expect(Run.prototype.setRequestInterval).toHaveBeenCalledTimes(0)
+    const notReadyProps: Props = {
+      ...defaultProps,
+      requestStatus: RequestStatus.NOT_READY,
+      data: null,
+      runID: "a",
+    }
 
     // Request has not completed.
-    const runningWrapper = mount<Run>(
-      <Proxy
-        requestStatus={RequestStatus.NOT_READY}
-        data={null}
-        isLoading={false}
-        error={null}
-        runID="a"
-        request={jest.fn()}
-        query={{}}
-        setQuery={jest.fn()}
-        receivedAt={new Date()}
-      />
-    )
-    expect(Run.prototype.setRequestInterval).toHaveBeenCalledTimes(0)
+    const stopped = render(<Run {...notReadyProps} />)
+    expect(setRequestInterval).toHaveBeenCalledTimes(0)
 
     // Set requestStatus to READY.
-    runningWrapper.setProps({
-      requestStatus: RequestStatus.READY,
-      data: {
-        ...MockRun,
-        status: RunStatus.RUNNING,
-      },
-    })
+    stopped.rerender(
+      <Run
+        {...notReadyProps}
+        requestStatus={RequestStatus.READY}
+        data={{ ...MockRun, status: RunStatus.STOPPED }}
+      />
+    )
+    expect(setRequestInterval).toHaveBeenCalledTimes(0)
 
-    expect(Run.prototype.setRequestInterval).toHaveBeenCalledTimes(1)
+    // Request has not completed.
+    const running = render(<Run {...notReadyProps} />)
+    expect(setRequestInterval).toHaveBeenCalledTimes(0)
+
+    // Set requestStatus to READY.
+    running.rerender(
+      <Run
+        {...notReadyProps}
+        requestStatus={RequestStatus.READY}
+        data={{ ...MockRun, status: RunStatus.RUNNING }}
+      />
+    )
+    expect(setRequestInterval).toHaveBeenCalledTimes(1)
   })
 
   it("clears the request interval if the run transitions into a stopped state on componentDidUpdate", () => {
-    const wrapper = mount(
-      <Proxy
-        requestStatus={RequestStatus.READY}
-        data={MockRun}
-        isLoading={false}
-        error={null}
-        runID="a"
-        request={jest.fn()}
-        query={{}}
-        setQuery={jest.fn()}
-        receivedAt={new Date()}
-      />
-    )
-    expect(Run.prototype.clearRequestInterval).toHaveBeenCalledTimes(0)
-    expect(Run.prototype.setRequestInterval).toHaveBeenCalledTimes(1)
+    const props: Props = { ...defaultProps, runID: "a" }
+    const { rerender } = render(<Run {...props} />)
+    expect(clearRequestInterval).toHaveBeenCalledTimes(0)
+    expect(setRequestInterval).toHaveBeenCalledTimes(1)
 
     // Set the state to stopped
-    wrapper.setProps({
-      data: {
-        ...MockRun,
-        status: RunStatus.STOPPED,
-      },
-    })
+    rerender(
+      <Run {...props} data={{ ...MockRun, status: RunStatus.STOPPED }} />
+    )
 
-    expect(Run.prototype.clearRequestInterval).toHaveBeenCalledTimes(1)
+    expect(clearRequestInterval).toHaveBeenCalledTimes(1)
   })
 })
