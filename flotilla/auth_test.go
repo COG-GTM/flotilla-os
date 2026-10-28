@@ -15,12 +15,14 @@ import (
 const (
 	aliceKey  = "alice-user-key"
 	workerKey = "status-worker-key"
+	opsKey    = "operator-only-key"
 )
 
 func scopedAuthenticator() *Authenticator {
 	a := testAuthenticator()
 	a.keys[digest(aliceKey)] = Principal{Identity: "alice@acme.example", Roles: map[Role]bool{RoleUser: true}}
 	a.keys[digest(workerKey)] = Principal{Identity: "status-worker", Roles: map[Role]bool{RoleWorker: true}}
+	a.keys[digest(opsKey)] = Principal{Identity: "ops", Roles: map[Role]bool{RoleOperator: true}}
 	return a
 }
 
@@ -141,7 +143,13 @@ func TestAuth_RoleEnforcement(t *testing.T) {
 	if resp := do(t, router, "PUT", "/api/v6/runA/status", workerKey, `{"status":"STOPPED","exit_code":0}`); resp.StatusCode != http.StatusOK {
 		t.Errorf("worker PUT status: expected 200, got %d", resp.StatusCode)
 	}
-	if resp := do(t, router, "DELETE", "/api/v6/clusters/cluster1", testAPIKey, ""); resp.StatusCode != http.StatusOK {
+	if resp := do(t, router, "PUT", "/api/v6/runA/status", opsKey, `{"status":"STOPPED","exit_code":0}`); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("operator PUT status: expected 403, got %d", resp.StatusCode)
+	}
+	if resp := do(t, router, "GET", "/api/v6/task", opsKey, ""); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("operator GET /api/v6/task: expected 403, got %d", resp.StatusCode)
+	}
+	if resp := do(t, router, "DELETE", "/api/v6/clusters/cluster1", opsKey, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("operator DELETE cluster: expected 200, got %d", resp.StatusCode)
 	}
 }
@@ -200,8 +208,32 @@ func TestAuth_OwnerDerivedFromVerifiedIdentity(t *testing.T) {
 		}
 	}
 
+	// Reserved env vars in the request cannot override the verified owner or run id.
+	resp := do(t, router, "PUT", "/api/v6/task/A/execute", aliceKey,
+		`{"cluster":"cluster1","env":[{"name":"FLOTILLA_RUN_OWNER_ID","value":"bob@acme.example"},{"name":"FLOTILLA_RUN_ID","value":"fake"},{"name":"E1","value":"V1"}]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("launch with reserved env: expected 200, got %d", resp.StatusCode)
+	}
+	var run state.Run
+	_ = json.NewDecoder(resp.Body).Decode(&run)
+	seen := map[string][]string{}
+	if run.Env != nil {
+		for _, e := range *run.Env {
+			seen[e.Name] = append(seen[e.Name], e.Value)
+		}
+	}
+	if v := seen["FLOTILLA_RUN_OWNER_ID"]; len(v) != 1 || v[0] != "alice@acme.example" {
+		t.Errorf("expected a single verified FLOTILLA_RUN_OWNER_ID, got %v", v)
+	}
+	if v := seen["FLOTILLA_RUN_ID"]; len(v) != 1 || v[0] != run.RunID {
+		t.Errorf("expected a single FLOTILLA_RUN_ID equal to the run id, got %v", v)
+	}
+	if v := seen["E1"]; len(v) != 1 || v[0] != "V1" {
+		t.Errorf("expected caller env E1=V1 to be kept, got %v", v)
+	}
+
 	// owner_id may now be omitted; it comes from the credential.
-	resp := do(t, router, "PUT", "/api/v6/task/A/execute", aliceKey, `{"cluster":"cluster1"}`)
+	resp = do(t, router, "PUT", "/api/v6/task/A/execute", aliceKey, `{"cluster":"cluster1"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("launch without owner_id: expected 200, got %d", resp.StatusCode)
 	}

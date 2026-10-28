@@ -21,7 +21,7 @@ const (
 	RoleUser Role = "user"
 	// RoleOperator can manage clusters and workers.
 	RoleOperator Role = "operator"
-	// RoleWorker can report run status (PUT /{run_id}/status).
+	// RoleWorker is the only role that can report run status (PUT /{run_id}/status).
 	RoleWorker Role = "worker"
 )
 

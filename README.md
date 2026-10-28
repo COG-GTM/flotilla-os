@@ -247,15 +247,19 @@ Generate a key and its entry with `KEY=$(openssl rand -hex 32); echo "alice@exam
 | ---- | ------ |
 | `user` | Reading definitions, runs, logs, templates, clusters and workers; creating/updating/deleting definitions and templates; launching and stopping runs |
 | `operator` | Creating, updating and deleting clusters; updating workers |
-| `worker` | Reporting run status (`PUT /{run_id}/status`) |
+| `worker` | Reporting run status (`PUT /{run_id}/status`); no other role can do this |
 
 The run owner (`owner_id` / `user`) and the user recorded when a run is stopped come from the authenticated identity; `run_tags.owner_id`, `owner_id` and identity headers in the request are ignored.
 
 Launch requests may only set `service_account` to `eks_default_service_account`, `emr_default_service_account` or an entry in `allowed_service_accounts`; anything else is rejected with `400`. When `allowed_image_registries` is set, definition and template images must come from one of those registries.
 
+Reserved run environment variables (`FLOTILLA_RUN_ID`, `FLOTILLA_RUN_OWNER_ID` / `owner_id_var`, ...) supplied in a launch request's `env` are dropped.
+
+API keys are reusable bearer credentials: only expose Flotilla over TLS (terminate HTTPS at your load balancer or proxy) and never over plain HTTP outside localhost.
+
 The server refuses to start when no keys are configured. For local development only, set `http_server_auth_disabled: true` to turn authentication off.
 
-The UI sends `REACT_APP_API_TOKEN` (if set at build time) as its bearer token. That token is embedded in the static bundle, so give it only the `user` role and put the UI behind your SSO proxy.
+The UI sends `REACT_APP_API_TOKEN` (if set at build time) as its bearer token. That token is embedded in the static bundle and readable by anyone who can load the UI, so use it only for local development (with `docker-compose`, set `FLOTILLA_UI_API_TOKEN` to the key and add its `user`-role digest to `FLOTILLA_API_KEYS`). In production leave it unset and serve the UI and API behind an SSO proxy that injects a per-user `Authorization` header.
 
 ### Configuration In Detail
 

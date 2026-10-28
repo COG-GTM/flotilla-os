@@ -5,5 +5,6 @@ RUN npm install -g serve
 RUN npm install
 ARG FLOTILLA_API
 ARG DEFAULT_CLUSTER
+ARG REACT_APP_API_TOKEN
 RUN npm run build
 ENTRYPOINT serve -s build

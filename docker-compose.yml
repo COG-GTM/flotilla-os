@@ -6,6 +6,7 @@ services:
       args:
         FLOTILLA_API: http://localhost:3000/api/v1
         DEFAULT_CLUSTER: default
+        REACT_APP_API_TOKEN: ${FLOTILLA_UI_API_TOKEN}
     environment:
       FLOTILLA_API: http://localhost:3000/api/v1
       DEFAULT_CLUSTER: default

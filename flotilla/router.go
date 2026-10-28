@@ -27,7 +27,7 @@ func NewRouter(ep endpoints) *muxtrace.Router {
 	v1.HandleFunc("/task/{definition_id}/history/{run_id}", auth.Require(ep.GetRun, RoleUser)).Methods("GET")
 	v1.HandleFunc("/task/{definition_id}/history/{run_id}", auth.Require(ep.StopRun, RoleUser)).Methods("DELETE")
 
-	v1.HandleFunc("/{run_id}/status", auth.Require(ep.UpdateRun, RoleWorker, RoleOperator)).Methods("PUT")
+	v1.HandleFunc("/{run_id}/status", auth.Require(ep.UpdateRun, RoleWorker)).Methods("PUT")
 	v1.HandleFunc("/{run_id}/logs", auth.Require(ep.GetLogs, RoleUser)).Methods("GET")
 	v1.HandleFunc("/{run_id}/events", auth.Require(ep.GetEvents, RoleUser)).Methods("GET")
 	v1.HandleFunc("/groups", auth.Require(ep.GetGroups, RoleUser)).Methods("GET")
@@ -70,7 +70,7 @@ func NewRouter(ep endpoints) *muxtrace.Router {
 	v6.HandleFunc("/task/{definition_id}/history/{run_id}", auth.Require(ep.GetRun, RoleUser)).Methods("GET")
 	v6.HandleFunc("/task/{definition_id}/history/{run_id}", auth.Require(ep.StopRun, RoleUser)).Methods("DELETE")
 	v6.HandleFunc("/task/history/{run_id}", auth.Require(ep.GetRun, RoleUser)).Methods("GET")
-	v6.HandleFunc("/{run_id}/status", auth.Require(ep.UpdateRun, RoleWorker, RoleOperator)).Methods("PUT")
+	v6.HandleFunc("/{run_id}/status", auth.Require(ep.UpdateRun, RoleWorker)).Methods("PUT")
 	v6.HandleFunc("/{run_id}/status", auth.Require(ep.GetRunStatus, RoleUser, RoleWorker, RoleOperator)).Methods("GET")
 	v6.HandleFunc("/{run_id}/logs", auth.Require(ep.GetLogs, RoleUser)).Methods("GET")
 
