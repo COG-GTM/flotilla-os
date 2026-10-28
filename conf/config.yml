@@ -38,3 +38,13 @@ queue_wait_time_seconds: 20
 queue_status: flotilla-status-updates-dev
 queue_status_rule: flotilla-task-status
 readonly_database_url: postgresql://flotilla:flotilla@localhost/flotilla?sslmode=disable
+eks_default_service_account: flotilla-job
+emr_default_service_account: flotilla-spark-job
+emr_job_role_arn:
+  flotilla-spark-job: arn:aws:iam::000000000000:role/flotilla-spark-job
+  data-platform-etl: arn:aws:iam::000000000000:role/data-platform-etl
+service_account_allowlist:
+  - flotilla-shared-job
+service_account_allowlist_by_team:
+  data-platform: 'data-platform-etl, data-platform-reader'
+service_account_trust_team_label: false

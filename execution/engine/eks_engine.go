@@ -140,7 +140,7 @@ func (ee *EKSExecutionEngine) Execute(ctx context.Context, executable state.Exec
 		}
 	}
 
-	if run.ServiceAccount == nil {
+	if run.ServiceAccount == nil || *run.ServiceAccount == "" {
 		run.ServiceAccount = aws.String(ee.jobSA)
 	}
 

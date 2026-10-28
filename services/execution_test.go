@@ -64,7 +64,7 @@ func TestExecutionService_CreateDefinitionRunByDefinitionID(t *testing.T) {
 	}
 
 	cmd := "_test_cmd_"
-	sa := "fooAccount"
+	sa := "flotilla-shared-job"
 	cpu := int64(512)
 	engine := state.DefaultEngine
 	req := state.DefinitionExecutionRequest{
