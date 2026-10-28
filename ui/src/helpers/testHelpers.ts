@@ -1,4 +1,4 @@
-import { FormikActions } from "formik"
+import { FormikHelpers } from "formik"
 import { createMemoryHistory, createLocation } from "history"
 import { RouteComponentProps } from "react-router-dom"
 import {
@@ -10,7 +10,9 @@ import {
   ExecutableType,
 } from "../types"
 
-export function createMockRouteComponentProps<MatchParams>({
+export function createMockRouteComponentProps<
+  MatchParams extends { [K in keyof MatchParams]?: string }
+>({
   path,
   url,
   params,
@@ -18,7 +20,7 @@ export function createMockRouteComponentProps<MatchParams>({
   path: string
   url: string
   params: MatchParams
-}): RouteComponentProps {
+}): RouteComponentProps<MatchParams> {
   return {
     history: createMemoryHistory(),
     match: {
@@ -31,21 +33,20 @@ export function createMockRouteComponentProps<MatchParams>({
   }
 }
 
-export const mockFormikActions: FormikActions<any> = {
-  setStatus: jest.fn(),
-  setError: jest.fn(),
-  setErrors: jest.fn(),
-  setSubmitting: jest.fn(),
-  setTouched: jest.fn(),
-  setValues: jest.fn(),
-  setFieldValue: jest.fn(),
-  setFieldError: jest.fn(),
-  setFieldTouched: jest.fn(),
-  validateForm: jest.fn(),
-  validateField: jest.fn(),
-  resetForm: jest.fn(),
-  submitForm: jest.fn(),
-  setFormikState: jest.fn(),
+export const mockFormikActions: FormikHelpers<any> = {
+  setStatus: vi.fn(),
+  setErrors: vi.fn(),
+  setSubmitting: vi.fn(),
+  setTouched: vi.fn(),
+  setValues: vi.fn(),
+  setFieldValue: vi.fn(),
+  setFieldError: vi.fn(),
+  setFieldTouched: vi.fn(),
+  validateForm: vi.fn(),
+  validateField: vi.fn(),
+  resetForm: vi.fn(),
+  submitForm: vi.fn(),
+  setFormikState: vi.fn(),
 }
 
 export const createMockTaskObject = (overrides?: Partial<Task>): Task => ({

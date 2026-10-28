@@ -4,8 +4,9 @@ import { SortOrder } from "../types"
 export type Props = {
   isSortable: boolean
   isActive: boolean
-  order: SortOrder
+  order: SortOrder | ""
   onClick: () => void
+  children?: React.ReactNode
 }
 
 const Th: React.FunctionComponent<Props> = ({

@@ -9,7 +9,7 @@ import {
   FormGroup,
   Intent,
 } from "@blueprintjs/core"
-import { RootState } from "../state/store"
+import { AppDispatch, RootState } from "../state/store"
 import {
   Settings,
   update,
@@ -17,7 +17,7 @@ import {
 } from "../state/settings"
 
 const SettingsButton: React.FC = () => {
-  const dispatch = useDispatch()
+  const dispatch = useDispatch<AppDispatch>()
   const { settings, isSettingsDialogOpen, isLoading } = useSelector(
     (s: RootState) => s.settings
   )
@@ -37,7 +37,7 @@ const SettingsButton: React.FC = () => {
         onClose={() => {
           dispatch(toggleDialogVisibilityChange(false))
         }}
-        className="bp3-dark"
+        className={Classes.DARK}
         title={`Settings (v${process.env.REACT_APP_VERSION})`}
       >
         <Formik<Settings>

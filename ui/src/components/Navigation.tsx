@@ -13,9 +13,9 @@ import {
 import SettingsButton from "./SettingsButton"
 
 const Navigation: React.FunctionComponent = () => (
-  <Navbar fixedToTop className="bp3-dark">
+  <Navbar fixedToTop className={Classes.DARK}>
     <NavbarGroup align={Alignment.LEFT}>
-      <Link to="/tasks" className="bp3-button bp3-minimal">
+      <Link to="/tasks" className={`${Classes.BUTTON} ${Classes.MINIMAL}`}>
         Flotilla
       </Link>
       <NavbarDivider />

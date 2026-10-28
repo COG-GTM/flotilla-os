@@ -105,6 +105,8 @@ describe("FlotillaClient", () => {
       definition_id: "definition_id",
       container_name: "container_name",
       privileged: false,
+      gpu: 0,
+      adaptive_resource_allocation: false,
     }
     mock.onPost(`/v6/task`).reply(200, res)
     expect(await client.createTask({ data })).toEqual(res)
@@ -128,6 +130,8 @@ describe("FlotillaClient", () => {
       definition_id: "definition_id",
       container_name: "container_name",
       privileged: false,
+      gpu: 0,
+      adaptive_resource_allocation: false,
     }
     mock.onPut(`/v6/task/${id}`).reply(200, res)
     expect(await client.updateTask({ definitionID: id, data })).toEqual(res)

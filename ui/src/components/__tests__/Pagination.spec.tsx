@@ -1,74 +1,57 @@
 import * as React from "react"
-import { mount, ReactWrapper } from "enzyme"
-import { Button, ButtonGroup } from "@blueprintjs/core"
+import { Classes } from "@blueprintjs/core"
+import { render, screen, userEvent } from "../../test-utils"
 import Pagination, { Props } from "../Pagination"
 
+const DEFAULT_PROPS: Props = {
+  updatePage: () => {},
+  currentPage: 1,
+  numItems: 100,
+  pageSize: 20,
+  isLoading: false,
+}
+
+const renderPagination = (props: Partial<Props> = {}) =>
+  render(<Pagination {...DEFAULT_PROPS} {...props} />)
+
+const getPrevButton = () => screen.getAllByRole("button")[0]
+const getNextButton = () => screen.getAllByRole("button")[1]
+
 describe("Pagination", () => {
-  let wrapper: ReactWrapper<Props>
-
-  beforeEach(() => {
-    wrapper = mount(
-      <Pagination
-        updatePage={() => {}}
-        currentPage={1}
-        numItems={100}
-        pageSize={20}
-        isLoading={false}
-      />
-    )
-  })
-
   it("renders two buttons", () => {
-    expect(wrapper.find(ButtonGroup)).toHaveLength(1)
-    expect(wrapper.find(Button)).toHaveLength(2)
+    const { container } = renderPagination()
+    expect(container.querySelectorAll(`.${Classes.BUTTON_GROUP}`)).toHaveLength(1)
+    expect(screen.getAllByRole("button")).toHaveLength(2)
   })
 
   it("disables the previous button if on the first page", () => {
-    wrapper.setProps({ currentPage: 1 })
-    expect(
-      wrapper
-        .find(Button)
-        .at(0)
-        .props().disabled
-    ).toEqual(true)
+    renderPagination({ currentPage: 1 })
+    expect(getPrevButton()).toBeDisabled()
   })
 
   it("disables the next button if on the last page", () => {
-    wrapper.setProps({ numItems: 113, currentPage: 5 })
-    expect(
-      wrapper
-        .find(Button)
-        .at(1)
-        .props().disabled
-    ).toEqual(false)
+    const { rerender } = renderPagination({ numItems: 113, currentPage: 5 })
+    expect(getNextButton()).toBeEnabled()
 
-    wrapper.setProps({ numItems: 113, currentPage: 6 })
-    expect(
-      wrapper
-        .find(Button)
-        .at(1)
-        .props().disabled
-    ).toEqual(true)
+    rerender(<Pagination {...DEFAULT_PROPS} numItems={113} currentPage={6} />)
+    expect(getNextButton()).toBeDisabled()
   })
 
-  it("calls props.updatePage when the prev or next buttons are clicked", () => {
-    const updatePage = jest.fn()
+  it("calls props.updatePage when the prev or next buttons are clicked", async () => {
+    const user = userEvent.setup()
+    const updatePage = vi.fn()
 
-    wrapper.setProps({ updatePage, currentPage: 1 })
+    const { rerender } = renderPagination({ updatePage, currentPage: 1 })
     expect(updatePage).toHaveBeenCalledTimes(0)
-    wrapper
-      .find(Button)
-      .at(1)
-      .simulate("click")
+    await user.click(getNextButton())
     expect(updatePage).toHaveBeenCalledTimes(1)
-    expect(updatePage).toHaveBeenCalledWith(wrapper.props().currentPage + 1)
+    expect(updatePage).toHaveBeenCalledWith(2)
 
-    wrapper.setProps({ currentPage: 2 })
-    wrapper
-      .find(Button)
-      .at(0)
-      .simulate("click")
+    rerender(
+      <Pagination {...DEFAULT_PROPS} updatePage={updatePage} currentPage={2} />
+    )
+    await user.click(getPrevButton())
     expect(updatePage).toHaveBeenCalledTimes(2)
-    expect(updatePage).toHaveBeenCalledWith(wrapper.props().currentPage - 1)
+    expect(updatePage).toHaveBeenCalledWith(1)
   })
 })

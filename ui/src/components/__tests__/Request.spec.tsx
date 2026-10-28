@@ -1,109 +1,98 @@
 import * as React from "react"
-import { mount, shallow } from "enzyme"
-import flushPromises from "flush-promises"
-import Request, { Props, ChildProps, RequestStatus } from "../Request"
+import { render, screen } from "../../test-utils"
+import Request, { ChildProps, RequestStatus } from "../Request"
+
+const renderState = ({
+  requestStatus,
+  data,
+  isLoading,
+  error,
+}: ChildProps<any, any>) => (
+  <ul>
+    <li>status: {requestStatus}</li>
+    <li>data: {String(data)}</li>
+    <li>loading: {String(isLoading)}</li>
+    <li>error: {String(error)}</li>
+  </ul>
+)
 
 describe("Request", () => {
-  it("calls props.request with props.initialArgs when the component mounts", () => {
-    const realRequest = Request.prototype.request
-    Request.prototype.request = jest.fn()
-    expect(Request.prototype.request).toHaveBeenCalledTimes(0)
-    const wrapper = mount(
-      <Request
-        requestFn={() =>
-          new Promise(resolve => {
-            resolve()
-          })
-        }
-        initialRequestArgs={{ foo: "bar" }}
-      >
+  it("calls props.requestFn with props.initialRequestArgs when the component mounts", () => {
+    const requestFn = vi.fn(() => Promise.resolve())
+    render(
+      <Request requestFn={requestFn} initialRequestArgs={{ foo: "bar" }}>
         {() => null}
       </Request>
     )
-    expect(Request.prototype.request).toHaveBeenCalledTimes(1)
-    expect(Request.prototype.request).toHaveBeenCalledWith(
-      wrapper.prop("initialRequestArgs")
-    )
-    Request.prototype.request = realRequest
+    expect(requestFn).toHaveBeenCalledTimes(1)
+    expect(requestFn).toHaveBeenCalledWith({ foo: "bar" })
   })
 
-  it("doesn't call props.request when the component mounts if props.shouldRequestOnMount is false", () => {
-    const realRequest = Request.prototype.request
-    Request.prototype.request = jest.fn()
-    expect(Request.prototype.request).toHaveBeenCalledTimes(0)
-    const wrapper = mount(
+  it("doesn't call props.requestFn when the component mounts if props.shouldRequestOnMount is false", () => {
+    const requestFn = vi.fn(() => Promise.resolve())
+    render(
       <Request
-        requestFn={() =>
-          new Promise(resolve => {
-            resolve()
-          })
-        }
+        requestFn={requestFn}
         initialRequestArgs={{ foo: "bar" }}
         shouldRequestOnMount={false}
       >
         {() => null}
       </Request>
     )
-    expect(Request.prototype.request).toHaveBeenCalledTimes(0)
-    Request.prototype.request = realRequest
+    expect(requestFn).toHaveBeenCalledTimes(0)
   })
 
   it("sets state correctly during the request method", async () => {
     const data = "data"
-    const onSuccess = jest.fn()
-    const successWrapper = shallow(
+    const onSuccess = vi.fn()
+    const success = render(
       <Request
-        requestFn={() =>
-          new Promise(resolve => {
-            resolve(data)
-          })
-        }
+        requestFn={() => Promise.resolve(data)}
         initialRequestArgs={{ foo: "bar" }}
         onSuccess={onSuccess}
       >
-        {(props: ChildProps<any, any>) => null}
+        {renderState}
       </Request>
     )
-    expect(successWrapper.state("requestStatus")).toEqual(
-      RequestStatus.NOT_READY
-    )
-    expect(successWrapper.state("data")).toEqual(null)
-    expect(successWrapper.state("isLoading")).toEqual(true)
-    expect(successWrapper.state("error")).toEqual(null)
+    expect(screen.getByText(`status: ${RequestStatus.NOT_READY}`)).toBeInTheDocument()
+    expect(screen.getByText("data: null")).toBeInTheDocument()
+    expect(screen.getByText("loading: true")).toBeInTheDocument()
+    expect(screen.getByText("error: null")).toBeInTheDocument()
     expect(onSuccess).toHaveBeenCalledTimes(0)
-    await flushPromises()
-    expect(successWrapper.state("requestStatus")).toEqual(RequestStatus.READY)
-    expect(successWrapper.state("data")).toEqual(data)
-    expect(successWrapper.state("isLoading")).toEqual(false)
-    expect(successWrapper.state("error")).toEqual(null)
+
+    expect(
+      await screen.findByText(`status: ${RequestStatus.READY}`)
+    ).toBeInTheDocument()
+    expect(screen.getByText(`data: ${data}`)).toBeInTheDocument()
+    expect(screen.getByText("loading: false")).toBeInTheDocument()
+    expect(screen.getByText("error: null")).toBeInTheDocument()
     expect(onSuccess).toHaveBeenCalledTimes(1)
     expect(onSuccess).toHaveBeenCalledWith(data)
+    success.unmount()
 
-    const onFailure = jest.fn()
+    const onFailure = vi.fn()
     const err = "err"
-    const errorWrapper = shallow(
+    render(
       <Request
-        requestFn={() =>
-          new Promise((_, reject) => {
-            reject(err)
-          })
-        }
+        requestFn={() => Promise.reject(err)}
         initialRequestArgs={{ foo: "bar" }}
         onFailure={onFailure}
       >
-        {(props: ChildProps<any, any>) => null}
+        {renderState}
       </Request>
     )
-    expect(errorWrapper.state("requestStatus")).toEqual(RequestStatus.NOT_READY)
-    expect(errorWrapper.state("data")).toEqual(null)
-    expect(errorWrapper.state("isLoading")).toEqual(true)
-    expect(errorWrapper.state("error")).toEqual(null)
+    expect(screen.getByText(`status: ${RequestStatus.NOT_READY}`)).toBeInTheDocument()
+    expect(screen.getByText("data: null")).toBeInTheDocument()
+    expect(screen.getByText("loading: true")).toBeInTheDocument()
+    expect(screen.getByText("error: null")).toBeInTheDocument()
     expect(onFailure).toHaveBeenCalledTimes(0)
-    await flushPromises()
-    expect(errorWrapper.state("requestStatus")).toEqual(RequestStatus.ERROR)
-    expect(errorWrapper.state("data")).toEqual(null)
-    expect(errorWrapper.state("isLoading")).toEqual(false)
-    expect(errorWrapper.state("error")).toEqual(err)
+
+    expect(
+      await screen.findByText(`status: ${RequestStatus.ERROR}`)
+    ).toBeInTheDocument()
+    expect(screen.getByText("data: null")).toBeInTheDocument()
+    expect(screen.getByText("loading: false")).toBeInTheDocument()
+    expect(screen.getByText(`error: ${err}`)).toBeInTheDocument()
     expect(onFailure).toHaveBeenCalledTimes(1)
     expect(onFailure).toHaveBeenCalledWith(err)
   })
