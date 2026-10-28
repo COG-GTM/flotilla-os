@@ -1270,6 +1270,18 @@ const (
 	StatusOffline     ClusterStatus = "offline"
 )
 
+// ValidClusterStatuses lists the statuses accepted for a cluster registry entry.
+var ValidClusterStatuses = []ClusterStatus{StatusActive, StatusMaintenance, StatusOffline}
+
+// clusterNamePattern follows the EKS cluster name rules and excludes path separators,
+// since the name is used as a kubeconfig file name and passed to the aws cli.
+var clusterNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$`)
+
+// IsValidClusterName reports whether name is safe to use as an EKS cluster name.
+func IsValidClusterName(name string) bool {
+	return clusterNamePattern.MatchString(name)
+}
+
 type ClusterMetadata struct {
 	ID                string        `json:"id" db:"id"`
 	Name              string        `json:"name" db:"name"`

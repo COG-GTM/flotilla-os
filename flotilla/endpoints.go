@@ -1,6 +1,7 @@
 package flotilla
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -25,6 +26,7 @@ type endpoints struct {
 	workerService     services.WorkerService
 	middlewareClient  middleware.Client
 	logger            flotillaLog.Logger
+	clusterAdminToken string
 }
 
 type listRequest struct {
@@ -124,6 +126,26 @@ func (ep endpoints) encodeError(w http.ResponseWriter, err error) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"error": err.Error(),
 	})
+}
+
+// requireClusterAdmin only lets requests through that present the configured
+// cluster admin token as "Authorization: Bearer <token>". If no token is
+// configured, every request is rejected.
+func (ep *endpoints) requireClusterAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !ok || ep.clusterAdminToken == "" ||
+			subtle.ConstantTimeCompare([]byte(strings.TrimSpace(token)), []byte(ep.clusterAdminToken)) != 1 {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.Header().Set("WWW-Authenticate", `Bearer realm="flotilla-cluster-admin"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "cluster admin authentication required",
+			})
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (ep *endpoints) encodeResponse(w http.ResponseWriter, response interface{}) {

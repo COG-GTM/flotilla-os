@@ -71,7 +71,7 @@ type executionService struct {
 	spotThresholdMinutes  float64
 	terminateJobChannel   chan state.TerminateJob
 	validEksClusters      []string
-	//validEksClusterTiers  string
+	validClusterTiers     []string
 }
 
 func (es *executionService) GetEvents(ctx context.Context, run state.Run) (state.PodEventList, error) {
@@ -107,7 +107,7 @@ func NewExecutionService(conf config.Config, eksExecutionEngine engine.Engine, s
 	es.eksClusterDefault = conf.GetString("eks_cluster_default")
 	es.eksGPUClusterDefault = conf.GetString("eks_gpu_cluster_default")
 	es.eksTierDefault = conf.GetString("eks_tier_default")
-	//es.validEksClusterTiers = conf.GetString("eks_cluster_tiers")
+	es.validClusterTiers = parseClusterTiers(conf.GetString("eks_cluster_tiers"), es.eksTierDefault)
 
 	if !slices.Contains(es.validEksClusters, es.eksClusterDefault) || !slices.Contains(es.validEksClusters, es.eksGPUClusterDefault) {
 		return nil, fmt.Errorf("an invalid cluster has been set as a default\nvalid_clusters:%s\neks_cluster_default:%s\neks_gpu_cluster_default:%s", es.validEksClusters, es.eksClusterDefault, es.eksGPUClusterDefault)
@@ -230,7 +230,7 @@ func (es *executionService) createFromDefinition(ctx context.Context, definition
 	var activeClusters []string
 	if len(clusterMetadata) > 0 {
 		for _, cluster := range clusterMetadata {
-			if cluster.Status == state.StatusActive {
+			if cluster.Status == state.StatusActive && state.IsValidClusterName(cluster.Name) {
 				if es.clusterSupportsTier(cluster, req.Tier) {
 					activeClusters = append(activeClusters, cluster.Name)
 				}
@@ -251,7 +251,9 @@ func (es *executionService) createFromDefinition(ctx context.Context, definition
 	}
 
 	for _, c := range clusterMetadata {
-		es.validEksClusters = append(es.validEksClusters, c.Name)
+		if state.IsValidClusterName(c.Name) {
+			es.validEksClusters = append(es.validEksClusters, c.Name)
+		}
 	}
 	if !es.isClusterValid(fields.ClusterName) {
 		return run, fmt.Errorf("%s was not found in the list of valid clusters: %s", fields.ClusterName, es.validEksClusters)
@@ -783,10 +785,64 @@ func (es *executionService) isClusterValid(clusterName string) bool {
 	return slices.Contains(es.validEksClusters, clusterName)
 }
 
+var clusterNamespacePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+var clusterRegionPattern = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
+
+// parseClusterTiers returns the configured tiers (comma separated), defaulting to 1-4,
+// and always includes the default tier.
+func parseClusterTiers(configured string, defaultTier string) []string {
+	var tiers []string
+	for _, t := range strings.Split(configured, ",") {
+		if t = strings.TrimSpace(t); t != "" && !slices.Contains(tiers, t) {
+			tiers = append(tiers, t)
+		}
+	}
+	if len(tiers) == 0 {
+		tiers = []string{"1", "2", "3", "4"}
+	}
+	if defaultTier != "" && !slices.Contains(tiers, defaultTier) {
+		tiers = append(tiers, defaultTier)
+	}
+	return tiers
+}
+
+// validateClusterMetadata rejects registry entries that could not be scheduled safely.
+// The status is normalized to lower case.
+func (es *executionService) validateClusterMetadata(cluster *state.ClusterMetadata) error {
+	if !state.IsValidClusterName(cluster.Name) {
+		return exceptions.MalformedInput{ErrorString: fmt.Sprintf(
+			"invalid cluster name [%s]: must be 1-100 letters, digits, '-' or '_' and start with a letter or digit", cluster.Name)}
+	}
+	cluster.Status = state.ClusterStatus(strings.ToLower(string(cluster.Status)))
+	if !slices.Contains(state.ValidClusterStatuses, cluster.Status) {
+		return exceptions.MalformedInput{ErrorString: fmt.Sprintf(
+			"invalid cluster status [%s]: must be one of %v", cluster.Status, state.ValidClusterStatuses)}
+	}
+	for _, tier := range cluster.AllowedTiers {
+		if !slices.Contains(es.validClusterTiers, tier) {
+			return exceptions.MalformedInput{ErrorString: fmt.Sprintf(
+				"invalid tier [%s]: must be one of %v", tier, es.validClusterTiers)}
+		}
+	}
+	if cluster.Namespace != "" && !clusterNamespacePattern.MatchString(cluster.Namespace) {
+		return exceptions.MalformedInput{ErrorString: fmt.Sprintf(
+			"invalid namespace [%s]: must be a valid Kubernetes namespace name", cluster.Namespace)}
+	}
+	if cluster.Region != "" && !clusterRegionPattern.MatchString(cluster.Region) {
+		return exceptions.MalformedInput{ErrorString: fmt.Sprintf("invalid region [%s]", cluster.Region)}
+	}
+	return nil
+}
+
 func (es *executionService) UpdateClusterMetadata(ctx context.Context, cluster state.ClusterMetadata) error {
 	ctx, span := utils.TraceJob(ctx, "flotilla.update_cluster_metadata", cluster.Name)
 	defer span.Finish()
 	span.SetTag("cluster_name", cluster.Name)
+	if err := es.validateClusterMetadata(&cluster); err != nil {
+		span.SetTag("error", true)
+		span.SetTag("error.msg", err.Error())
+		return err
+	}
 	return es.stateManager.UpdateClusterMetadata(ctx, cluster)
 }
 
