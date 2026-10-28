@@ -19,15 +19,6 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    // Temporary: map the pre-upgrade import paths until the feature packages
-    // switch to the new ones. Removed by the coordinator after integration.
-    resolve: {
-      alias: [
-        { find: /^react-select\/lib\/Creatable$/, replacement: "react-select/creatable" },
-        { find: /^react-select\/lib\/types$/, replacement: "react-select" },
-        { find: /^react-json-view$/, replacement: "@microlink/react-json-view" },
-      ],
-    },
     define: isTest ? {} : { "process.env": JSON.stringify(env) },
     server: { port: 3000 },
     preview: { port: 3000 },
