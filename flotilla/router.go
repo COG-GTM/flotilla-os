@@ -7,6 +7,7 @@ import (
 // NewRouter creates and returns a Mux Router
 func NewRouter(ep endpoints) *muxtrace.Router {
 	r := muxtrace.NewRouter()
+	r.Use(ep.authenticator.Middleware)
 	v1 := r.PathPrefix("/api/v1").Subrouter()
 
 	v1.HandleFunc("/task", ep.ListDefinitions).Methods("GET")
@@ -25,7 +26,7 @@ func NewRouter(ep endpoints) *muxtrace.Router {
 	v1.HandleFunc("/task/{definition_id}/history/{run_id}", ep.GetRun).Methods("GET")
 	v1.HandleFunc("/task/{definition_id}/history/{run_id}", ep.StopRun).Methods("DELETE")
 
-	v1.HandleFunc("/{run_id}/status", ep.UpdateRun).Methods("PUT")
+	v1.HandleFunc("/{run_id}/status", requireOperator(ep.UpdateRun)).Methods("PUT")
 	v1.HandleFunc("/{run_id}/logs", ep.GetLogs).Methods("GET")
 	v1.HandleFunc("/{run_id}/events", ep.GetEvents).Methods("GET")
 	v1.HandleFunc("/groups", ep.GetGroups).Methods("GET")
@@ -40,16 +41,16 @@ func NewRouter(ep endpoints) *muxtrace.Router {
 
 	v5 := r.PathPrefix("/api/v5").Subrouter()
 	v5.HandleFunc("/worker", ep.ListWorkers).Methods("GET")
-	v5.HandleFunc("/worker", ep.BatchUpdateWorkers).Methods("PUT")
+	v5.HandleFunc("/worker", requireOperator(ep.BatchUpdateWorkers)).Methods("PUT")
 	v5.HandleFunc("/worker/{worker_type}", ep.GetWorker).Methods("GET")
-	v5.HandleFunc("/worker/{worker_type}", ep.UpdateWorker).Methods("PUT")
+	v5.HandleFunc("/worker/{worker_type}", requireOperator(ep.UpdateWorker)).Methods("PUT")
 
 	v6 := r.PathPrefix("/api/v6").Subrouter()
 	v6.HandleFunc("/clusters", ep.ListClusters).Methods("GET")
-	v6.HandleFunc("/clusters", ep.CreateCluster).Methods("POST")
+	v6.HandleFunc("/clusters", requireOperator(ep.CreateCluster)).Methods("POST")
 	v6.HandleFunc("/clusters/{cluster_id}", ep.GetCluster).Methods("GET")
-	v6.HandleFunc("/clusters/{cluster_id}", ep.UpdateCluster).Methods("PUT")
-	v6.HandleFunc("/clusters/{cluster_id}", ep.DeleteCluster).Methods("DELETE")
+	v6.HandleFunc("/clusters/{cluster_id}", requireOperator(ep.UpdateCluster)).Methods("PUT")
+	v6.HandleFunc("/clusters/{cluster_id}", requireOperator(ep.DeleteCluster)).Methods("DELETE")
 	v6.HandleFunc("/{run_id}/events", ep.GetEvents).Methods("GET")
 	v6.HandleFunc("/groups", ep.GetGroups).Methods("GET")
 	v6.HandleFunc("/health", ep.HealthCheck).Methods("GET")
@@ -68,7 +69,7 @@ func NewRouter(ep endpoints) *muxtrace.Router {
 	v6.HandleFunc("/task/{definition_id}/history/{run_id}", ep.GetRun).Methods("GET")
 	v6.HandleFunc("/task/{definition_id}/history/{run_id}", ep.StopRun).Methods("DELETE")
 	v6.HandleFunc("/task/history/{run_id}", ep.GetRun).Methods("GET")
-	v6.HandleFunc("/{run_id}/status", ep.UpdateRun).Methods("PUT")
+	v6.HandleFunc("/{run_id}/status", requireOperator(ep.UpdateRun)).Methods("PUT")
 	v6.HandleFunc("/{run_id}/status", ep.GetRunStatus).Methods("GET")
 	v6.HandleFunc("/{run_id}/logs", ep.GetLogs).Methods("GET")
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stitchfix/flotilla-os/config"
+	"github.com/stitchfix/flotilla-os/exceptions"
 	"github.com/stitchfix/flotilla-os/state"
 	"github.com/stitchfix/flotilla-os/testutils"
 )
@@ -37,6 +38,7 @@ func setUp(t *testing.T) (ExecutionService, *testutils.ImplementsAllTheThings) {
 		},
 	}
 
+	t.Setenv("EKS_ALLOWED_SERVICE_ACCOUNTS", "fooAccount,barAccount")
 	es, err := NewExecutionService(c, &imp, &imp, &imp, &imp)
 	if err != nil {
 		log.Fatalf("error seting up execution service: %s", err.Error())
@@ -1009,5 +1011,31 @@ func TestExecutionService_SparkNullDescriptionNullHash(t *testing.T) {
 	// Should have NULL command_hash (malformed job)
 	if run.CommandHash != nil {
 		t.Errorf("Expected NULL command_hash for Spark job with NULL description, got '%s'", *run.CommandHash)
+	}
+}
+
+func TestExecutionService_CreateDefinitionRunRejectsUnlistedServiceAccount(t *testing.T) {
+	ctx := context.Background()
+	es, _ := setUp(t)
+
+	cmd := "_test_cmd_"
+	sa := "cluster-admin"
+	engine := state.DefaultEngine
+	req := state.DefinitionExecutionRequest{
+		ExecutionRequestCommon: &state.ExecutionRequestCommon{
+			ClusterName:    "clusta",
+			OwnerID:        "somebody",
+			Command:        &cmd,
+			Engine:         &engine,
+			ServiceAccount: &sa,
+		},
+	}
+
+	_, err := es.CreateDefinitionRunByDefinitionID(ctx, "B", &req)
+	if err == nil {
+		t.Fatalf("Expected error for service account outside the allowlist")
+	}
+	if _, ok := err.(exceptions.MalformedInput); !ok {
+		t.Errorf("Expected MalformedInput error, got [%T] %v", err, err)
 	}
 }

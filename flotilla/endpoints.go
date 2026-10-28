@@ -25,6 +25,7 @@ type endpoints struct {
 	workerService     services.WorkerService
 	middlewareClient  middleware.Client
 	logger            flotillaLog.Logger
+	authenticator     *Authenticator
 }
 
 type listRequest struct {
@@ -402,7 +403,7 @@ func (ep *endpoints) CreateRun(w http.ResponseWriter, r *http.Request) {
 	req := state.DefinitionExecutionRequest{
 		ExecutionRequestCommon: &state.ExecutionRequestCommon{
 			Env:              lr.Env,
-			OwnerID:          "v1-unknown",
+			OwnerID:          resolveOwnerID(r, "v1-unknown"),
 			Command:          nil,
 			Memory:           nil,
 			Cpu:              nil,
@@ -461,7 +462,7 @@ func (ep *endpoints) CreateRunV2(w http.ResponseWriter, r *http.Request) {
 	req := state.DefinitionExecutionRequest{
 		ExecutionRequestCommon: &state.ExecutionRequestCommon{
 			Env:              lr.Env,
-			OwnerID:          lr.RunTags.OwnerEmail,
+			OwnerID:          resolveOwnerID(r, lr.RunTags.OwnerEmail),
 			Command:          nil,
 			Memory:           nil,
 			Cpu:              nil,
@@ -505,6 +506,7 @@ func (ep *endpoints) CreateRunV4(w http.ResponseWriter, r *http.Request) {
 		ep.encodeError(w, err)
 		return
 	}
+	lr.RunTags.OwnerID = resolveOwnerID(r, lr.RunTags.OwnerID)
 	if len(lr.RunTags.OwnerID) == 0 {
 		ep.encodeError(w, exceptions.MalformedInput{
 			ErrorString: fmt.Sprintf("run_tags must exist in body and contain [owner_id]")})
@@ -578,7 +580,7 @@ func (ep *endpoints) CreateRunByAlias(w http.ResponseWriter, r *http.Request) {
 		ep.encodeError(w, err)
 		return
 	}
-
+	lr.RunTags.OwnerID = resolveOwnerID(r, lr.RunTags.OwnerID)
 	if len(lr.RunTags.OwnerID) == 0 {
 		ep.encodeError(w, exceptions.MalformedInput{
 			ErrorString: fmt.Sprintf("run_tags must exist in body and contain [owner_id]")})
@@ -659,6 +661,10 @@ func (ep *endpoints) StopRun(w http.ResponseWriter, r *http.Request) {
 // Extracts user info if present in the headers.s
 func (ep *endpoints) ExtractUserInfo(r *http.Request) state.UserInfo {
 	var userInfo state.UserInfo
+	if caller, ok := callerFromContext(r.Context()); ok && !caller.Anonymous {
+		userInfo.Name = caller.Identity
+		return userInfo
+	}
 	for name, headers := range r.Header {
 		name = strings.ToLower(name)
 		for _, h := range headers {
@@ -893,6 +899,7 @@ func (ep *endpoints) CreateTemplateRunByName(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	req.OwnerID = resolveOwnerID(r, req.OwnerID)
 	if len(req.OwnerID) == 0 {
 		ep.encodeError(w, exceptions.MalformedInput{
 			ErrorString: fmt.Sprintf("request payload must contain [owner_id]; the run_tags field is deprecated for the v7 endpoint.")})
@@ -936,6 +943,7 @@ func (ep *endpoints) CreateTemplateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.OwnerID = resolveOwnerID(r, req.OwnerID)
 	if len(req.OwnerID) == 0 {
 		ep.encodeError(w, exceptions.MalformedInput{
 			ErrorString: fmt.Sprintf("request payload must contain [owner_id]; the run_tags field is deprecated for the v7 endpoint.")})
