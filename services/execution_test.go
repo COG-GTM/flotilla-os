@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stitchfix/flotilla-os/config"
+	"github.com/stitchfix/flotilla-os/exceptions"
 	"github.com/stitchfix/flotilla-os/state"
 	"github.com/stitchfix/flotilla-os/testutils"
 )
@@ -1009,5 +1010,43 @@ func TestExecutionService_SparkNullDescriptionNullHash(t *testing.T) {
 	// Should have NULL command_hash (malformed job)
 	if run.CommandHash != nil {
 		t.Errorf("Expected NULL command_hash for Spark job with NULL description, got '%s'", *run.CommandHash)
+	}
+}
+
+func TestExecutionService_SparkExtensionMalformedRejected(t *testing.T) {
+	ctx := context.Background()
+	desc := "spark job"
+	sparkEngine := state.EKSSparkEngine
+
+	cases := map[string]*state.SparkExtension{
+		"nil":                     nil,
+		"empty":                   {},
+		"nil conf name":           {SparkSubmitJobDriver: &state.SparkSubmitJobDriver{SparkSubmitConf: []state.Conf{{Value: aws.String("4g")}}}},
+		"unparseable exec memory": {SparkSubmitJobDriver: &state.SparkSubmitJobDriver{SparkSubmitConf: []state.Conf{{Name: aws.String("spark.executor.memory"), Value: aws.String("abc")}}}},
+	}
+	for name, se := range cases {
+		t.Run(name, func(t *testing.T) {
+			es, imp := setUp(t)
+			req := state.DefinitionExecutionRequest{
+				ExecutionRequestCommon: &state.ExecutionRequestCommon{
+					Description:    &desc,
+					OwnerID:        "testuser",
+					Engine:         &sparkEngine,
+					SparkExtension: se,
+				},
+			}
+			_, err := es.CreateDefinitionRunByDefinitionID(ctx, "A", &req)
+			if err == nil {
+				t.Fatal("expected malformed spark_extension to be rejected")
+			}
+			if _, ok := err.(exceptions.MalformedInput); !ok {
+				t.Errorf("expected exceptions.MalformedInput, got %T: %v", err, err)
+			}
+			for _, call := range imp.Calls {
+				if call == "CreateRun" || call == "Enqueue" {
+					t.Errorf("expected no %s call for a rejected request", call)
+				}
+			}
+		})
 	}
 }

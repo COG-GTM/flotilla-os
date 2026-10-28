@@ -151,6 +151,15 @@ func (emr *EMRExecutionEngine) Execute(ctx context.Context, executable state.Exe
 	ctx, span = utils.TraceJob(ctx, "flotilla.job.emr_execute", run.RunID)
 	defer span.Finish()
 	utils.TagJobRun(span, run)
+
+	if err := ValidateSparkExtension(run.SparkExtension); err != nil {
+		run = stopRunWithError(run, err)
+		span.SetTag("error", true)
+		span.SetTag("error.msg", err.Error())
+		_ = emr.log.Log("level", "error", "message", "Rejecting EMR run with invalid spark_extension", "run_id", run.RunID, "error", err.Error())
+		return run, false, err
+	}
+
 	run = emr.estimateExecutorCount(run, manager)
 	run = emr.estimateMemoryResources(ctx, run, manager)
 
@@ -174,6 +183,13 @@ func (emr *EMRExecutionEngine) Execute(ctx context.Context, executable state.Exe
 	}
 
 	startJobRunInput, err := emr.generateEMRStartJobRunInput(ctx, executable, run, manager, capabilities)
+	if err != nil {
+		run = stopRunWithError(run, err)
+		span.SetTag("error", true)
+		span.SetTag("error.msg", err.Error())
+		_ = emr.log.Log("level", "error", "message", "Failed to build EMR StartJobRun input", "run_id", run.RunID, "error", err.Error())
+		return run, false, err
+	}
 	emrJobManifest := aws.String(fmt.Sprintf("%s/%s/%s.json", emr.s3ManifestBasePath, run.RunID, "start-job-run-input"))
 	obj, err := json.MarshalIndent(startJobRunInput, "", "\t")
 	if err == nil {
@@ -204,8 +220,8 @@ func (emr *EMRExecutionEngine) Execute(ctx context.Context, executable state.Exe
 		span.SetTag("error", true)
 		span.SetTag("error.msg", err.Error())
 	} else {
-		span.SetTag("emr.job_id", *run.SparkExtension.EMRJobId)
-		span.SetTag("emr.virtual_cluster_id", *run.SparkExtension.VirtualClusterId)
+		span.SetTag("emr.job_id", aws.StringValue(run.SparkExtension.EMRJobId))
+		span.SetTag("emr.virtual_cluster_id", aws.StringValue(run.SparkExtension.VirtualClusterId))
 		utils.TagJobRun(span, run)
 	}
 	return run, false, nil
@@ -246,6 +262,9 @@ func (emr *EMRExecutionEngine) generateApplicationConf(ctx context.Context, exec
 	hiveDefaults := map[string]*string{}
 
 	for _, k := range run.SparkExtension.ApplicationConf {
+		if k.Name == nil || k.Value == nil {
+			continue
+		}
 		sparkDefaults[*k.Name] = k.Value
 	}
 	if run.SparkExtension.HiveConf != nil {
@@ -298,7 +317,13 @@ func (emr *EMRExecutionEngine) resolveCluster(ctx context.Context, run state.Run
 }
 
 func (emr *EMRExecutionEngine) generateEMRStartJobRunInput(ctx context.Context, executable state.Executable, run state.Run, manager state.Manager, capabilities state.Capabilities) (emrcontainers.StartJobRunInput, error) {
-	roleArn := emr.emrJobRoleArn[*run.ServiceAccount]
+	if err := ValidateSparkExtension(run.SparkExtension); err != nil {
+		return emrcontainers.StartJobRunInput{}, err
+	}
+	var roleArn string
+	if run.ServiceAccount != nil {
+		roleArn = emr.emrJobRoleArn[*run.ServiceAccount]
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -977,7 +1002,64 @@ func setResourceSuffix(value string) string {
 	return value
 }
 
+var sparkMemoryConfKeys = map[string]bool{
+	"spark.executor.memory": true,
+	"spark.driver.memory":   true,
+}
+
+// ValidateSparkExtension rejects spark_extension payloads the EMR engine
+// cannot submit, returning exceptions.MalformedInput.
+func ValidateSparkExtension(se *state.SparkExtension) error {
+	if se == nil {
+		return exceptions.MalformedInput{ErrorString: "spark_extension is required when using the eks-spark engine"}
+	}
+	if se.SparkSubmitJobDriver == nil {
+		return exceptions.MalformedInput{ErrorString: "spark_extension.spark_submit_job_driver is required"}
+	}
+	for i, c := range se.SparkSubmitJobDriver.SparkSubmitConf {
+		if c.Name == nil || *c.Name == "" || c.Value == nil {
+			return exceptions.MalformedInput{ErrorString: fmt.Sprintf("spark_extension.spark_submit_job_driver.spark_submit_conf[%d] must have a name and a value", i)}
+		}
+		if sparkMemoryConfKeys[*c.Name] {
+			if _, err := resource.ParseQuantity(setResourceSuffix(*c.Value)); err != nil {
+				return exceptions.MalformedInput{ErrorString: fmt.Sprintf("spark_extension.spark_submit_job_driver.spark_submit_conf %s has an invalid memory value %q", *c.Name, *c.Value)}
+			}
+		}
+	}
+	for i, c := range se.ApplicationConf {
+		if c.Name == nil || *c.Name == "" || c.Value == nil {
+			return exceptions.MalformedInput{ErrorString: fmt.Sprintf("spark_extension.application_conf[%d] must have a name and a value", i)}
+		}
+	}
+	return nil
+}
+
+func stopRunWithError(run state.Run, err error) state.Run {
+	run.ExitReason = aws.String(err.Error())
+	run.ExitCode = aws.Int64(-1)
+	run.StartedAt = run.QueuedAt
+	run.FinishedAt = run.QueuedAt
+	run.Status = state.StatusStopped
+	return run
+}
+
+func (emr *EMRExecutionEngine) logUnparseableMemory(run state.Run, name string, err error) {
+	if emr.log != nil {
+		_ = emr.log.Log(
+			"level", "warn",
+			"message", "Skipping Spark ARA - unparseable memory value",
+			"run_id", run.RunID,
+			"conf", name,
+			"error", err.Error(),
+		)
+	}
+}
+
 func (emr *EMRExecutionEngine) estimateMemoryResources(ctx context.Context, run state.Run, manager state.Manager) state.Run {
+	if run.SparkExtension == nil || run.SparkExtension.SparkSubmitJobDriver == nil {
+		return run
+	}
+
 	// Early return for NULL command_hash
 	if run.CommandHash == nil {
 		metricTags := emr.buildMetricTags(run)
@@ -1024,11 +1106,16 @@ func (emr *EMRExecutionEngine) estimateMemoryResources(ctx context.Context, run 
 
 	var sparkSubmitConf []state.Conf
 	for _, k := range run.SparkExtension.SparkSubmitJobDriver.SparkSubmitConf {
-		if *k.Name == "spark.executor.memory" && k.Value != nil {
-			// 1.25x executor memory - OOM in the last 30 days
-			if executorOOM {
-				originalValue := *k.Value
-				quantity := resource.MustParse(setResourceSuffix(originalValue))
+		if k.Name == nil || k.Value == nil {
+			sparkSubmitConf = append(sparkSubmitConf, state.Conf{Name: k.Name, Value: k.Value})
+			continue
+		}
+		if *k.Name == "spark.executor.memory" {
+			quantity, err := resource.ParseQuantity(setResourceSuffix(*k.Value))
+			if err != nil {
+				emr.logUnparseableMemory(run, *k.Name, err)
+			} else if executorOOM {
+				// 1.25x executor memory - OOM in the last 30 days
 				originalMB := quantity.Value() / (1024 * 1024) // Convert to MB
 				quantity.Set(int64(float64(quantity.Value()) * 1.25))
 				adjustedMB := quantity.Value() / (1024 * 1024)
@@ -1059,7 +1146,6 @@ func (emr *EMRExecutionEngine) estimateMemoryResources(ctx context.Context, run 
 					)
 				}
 			} else {
-				quantity := resource.MustParse(setResourceSuffix(*k.Value))
 				minVal := resource.MustParse("1G")
 				if quantity.MilliValue() > minVal.MilliValue() {
 					quantity.Set(int64(float64(quantity.Value()) * 1.0))
@@ -1069,9 +1155,13 @@ func (emr *EMRExecutionEngine) estimateMemoryResources(ctx context.Context, run 
 		}
 		if driverOOM {
 			// Bump up driver by 3x, jvm memory strings
-			if *k.Name == "spark.driver.memory" && k.Value != nil {
-				originalValue := *k.Value
-				quantity := resource.MustParse(setResourceSuffix(originalValue))
+			if *k.Name == "spark.driver.memory" {
+				quantity, err := resource.ParseQuantity(setResourceSuffix(*k.Value))
+				if err != nil {
+					emr.logUnparseableMemory(run, *k.Name, err)
+					sparkSubmitConf = append(sparkSubmitConf, state.Conf{Name: k.Name, Value: k.Value})
+					continue
+				}
 				originalMB := quantity.Value() / (1024 * 1024)
 				quantity.Set(quantity.Value() * 3)
 				adjustedMB := quantity.Value() / (1024 * 1024)
@@ -1113,7 +1203,14 @@ func (emr *EMRExecutionEngine) sparkSubmitParams(run state.Run) *string {
 	var buffer bytes.Buffer
 	buffer.WriteString(fmt.Sprintf(" --name %s", run.RunID))
 
+	if run.SparkExtension == nil || run.SparkExtension.SparkSubmitJobDriver == nil {
+		return aws.String(buffer.String())
+	}
+
 	for _, k := range run.SparkExtension.SparkSubmitJobDriver.SparkSubmitConf {
+		if k.Name == nil || k.Value == nil {
+			continue
+		}
 		buffer.WriteString(fmt.Sprintf(" --conf %s=%s", *k.Name, *k.Value))
 	}
 
