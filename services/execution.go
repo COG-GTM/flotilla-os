@@ -72,6 +72,7 @@ type executionService struct {
 	terminateJobChannel   chan state.TerminateJob
 	validEksClusters      []string
 	//validEksClusterTiers  string
+	serviceAccountPolicy serviceAccountPolicy
 }
 
 func (es *executionService) GetEvents(ctx context.Context, run state.Run) (state.PodEventList, error) {
@@ -156,6 +157,8 @@ func NewExecutionService(conf config.Config, eksExecutionEngine engine.Engine, s
 			return run.User
 		},
 	}
+
+	es.serviceAccountPolicy = newServiceAccountPolicy(conf)
 
 	es.terminateJobChannel = make(chan state.TerminateJob, 100)
 	return &es, nil
@@ -315,6 +318,10 @@ func (es *executionService) constructBaseRunFromExecutable(ctx context.Context, 
 
 	runID, err := state.NewRunID(fields.Engine)
 	if err != nil {
+		return run, err
+	}
+
+	if err = es.serviceAccountPolicy.authorize(fields); err != nil {
 		return run, err
 	}
 

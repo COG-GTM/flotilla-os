@@ -264,7 +264,11 @@ The variables in `conf/config.yml` are sensible defaults. Most should be left al
 | `eks_job_namespace` | Kubernetes namespace to submit jobs to. |
 | `eks_job_ttl` | default job ttl in seconds |
 | `eks_job_queue` | SQS job queue - the api places the jobs on this queue and the submit worker asynchronously submits it to Kubernetes/EKS |
-| `eks.service_account` | Kubernetes service account to use for jobs. |
+| `eks_default_service_account` | Kubernetes service account EKS jobs run as when the launch request does not set `service_account`. |
+| `emr_default_service_account` | Service account eks-spark jobs run as when the launch request does not set `service_account`; must have an entry in `emr_job_role_arn`. |
+| `emr_job_role_arn` | Map of service account -> IAM execution role ARN for eks-spark jobs. Runs whose service account has no entry are rejected. |
+| `service_account_allowlist` | List of service accounts any launch request may select via `service_account` (in addition to the engine default). Anything not allowlisted is rejected with a 400. |
+| `service_account_allowlist_by_team` | Map of team -> comma-separated service accounts that requests labelled with that `team` may select. Pair with a `middlewareClient` that authenticates the caller and sets `labels.team`. |
 
 ## Development
 

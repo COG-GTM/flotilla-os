@@ -322,3 +322,22 @@ func TestLakekeeperSecretEnvVarsNotConfigured(t *testing.T) {
 		t.Fatalf("env var count = %d, want none when no secret is configured", len(got))
 	}
 }
+
+func TestGenerateEMRStartJobRunInput_RejectsUnmappedServiceAccount(t *testing.T) {
+	emr := &EMRExecutionEngine{
+		log:           nopLogger{},
+		emrJobRoleArn: map[string]string{"flotilla-spark-job": "arn:aws:iam::000000000000:role/flotilla-spark-job"},
+	}
+	for _, sa := range []*string{nil, strPtr(""), strPtr("prod-etl")} {
+		run := state.Run{RunID: "eks-spark-1", ServiceAccount: sa}
+		input, err := emr.generateEMRStartJobRunInput(nil, nil, run, nil, nil)
+		if err == nil {
+			t.Fatalf("expected error for service account %v", sa)
+		}
+		if input.ExecutionRoleArn != nil {
+			t.Fatalf("expected no execution role, got %q", *input.ExecutionRoleArn)
+		}
+	}
+}
+
+func strPtr(s string) *string { return &s }

@@ -173,7 +173,21 @@ func (emr *EMRExecutionEngine) Execute(ctx context.Context, executable state.Exe
 		}
 	}
 
+	tierTag := fmt.Sprintf("tier:%s", run.Tier)
+
 	startJobRunInput, err := emr.generateEMRStartJobRunInput(ctx, executable, run, manager, capabilities)
+	if err != nil {
+		run.ExitReason = aws.String(fmt.Sprintf("%v", err))
+		run.ExitCode = aws.Int64(-1)
+		run.StartedAt = run.QueuedAt
+		run.FinishedAt = run.QueuedAt
+		run.Status = state.StatusStopped
+		span.SetTag("error", true)
+		span.SetTag("error.msg", err.Error())
+		_ = emr.log.Log("level", "error", "message", "EMR job input error", "error", err.Error())
+		_ = metrics.Increment(metrics.EngineEMRExecute, []string{string(metrics.StatusFailure), tierTag}, 1)
+		return run, false, err
+	}
 	emrJobManifest := aws.String(fmt.Sprintf("%s/%s/%s.json", emr.s3ManifestBasePath, run.RunID, "start-job-run-input"))
 	obj, err := json.MarshalIndent(startJobRunInput, "", "\t")
 	if err == nil {
@@ -181,7 +195,6 @@ func (emr *EMRExecutionEngine) Execute(ctx context.Context, executable state.Exe
 	}
 
 	emr.log.Log("level", "info", "message", "Start EMR JobRun", "ExecutionRoleArn", startJobRunInput.ExecutionRoleArn)
-	tierTag := fmt.Sprintf("tier:%s", run.Tier)
 
 	startJobRunOutput, err := emr.emrContainersClient.StartJobRun(&startJobRunInput)
 	if err == nil {
@@ -298,7 +311,13 @@ func (emr *EMRExecutionEngine) resolveCluster(ctx context.Context, run state.Run
 }
 
 func (emr *EMRExecutionEngine) generateEMRStartJobRunInput(ctx context.Context, executable state.Executable, run state.Run, manager state.Manager, capabilities state.Capabilities) (emrcontainers.StartJobRunInput, error) {
+	if run.ServiceAccount == nil || *run.ServiceAccount == "" {
+		return emrcontainers.StartJobRunInput{}, fmt.Errorf("EMR job run %s has no service account", run.RunID)
+	}
 	roleArn := emr.emrJobRoleArn[*run.ServiceAccount]
+	if roleArn == "" {
+		return emrcontainers.StartJobRunInput{}, fmt.Errorf("no EMR execution role configured for service account %s", *run.ServiceAccount)
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
