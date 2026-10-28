@@ -6,6 +6,12 @@ eks_clusters: 'clusta, cupcake'
 eks_cluster_default: 'clusta'
 eks_gpu_cluster_default: 'clusta'
 eks_tier_default: '4'
+eks_default_service_account: flotilla-default
+eks_allowed_service_accounts:
+  - fooAccount
+emr_default_service_account: emr-default
+emr_allowed_service_accounts:
+  - emr-team-a
 eks_log_driver_name: awslogs
 eks_log_driver_options_awslogs-group: flotilla-eks-namespace
 eks_log_driver_options_awslogs-region: us-east-1
