@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stitchfix/flotilla-os/clients/middleware"
@@ -987,5 +988,39 @@ func TestEndpoints_ClusterWritesRejectInvalidMetadata(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestApp_CORSAllowsAuthorizedClusterWrites(t *testing.T) {
+	const origin = "http://flotilla-ui.example"
+	ep, _ := setUpEndpoints(t)
+	app := App{corsAllowedOrigins: []string{origin}}
+	app.configureRoutes(ep)
+
+	preflight := httptest.NewRequest("OPTIONS", "/api/v6/clusters", nil)
+	preflight.Header.Set("Origin", origin)
+	preflight.Header.Set("Access-Control-Request-Method", "POST")
+	preflight.Header.Set("Access-Control-Request-Headers", "authorization,content-type")
+	w := httptest.NewRecorder()
+	app.handler.ServeHTTP(w, preflight)
+
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != origin {
+		t.Errorf("Expected preflight to allow origin %s, got %q", origin, got)
+	}
+	if got := strings.ToLower(w.Header().Get("Access-Control-Allow-Headers")); !strings.Contains(got, "authorization") {
+		t.Errorf("Expected preflight to allow the Authorization header, got %q", got)
+	}
+
+	req := httptest.NewRequest("POST", "/api/v6/clusters", bytes.NewBufferString(`{"name":"cluster3", "status":"active"}`))
+	req.Header.Set("Origin", origin)
+	req.Header.Set("Authorization", "Bearer "+testClusterAdminToken)
+	w = httptest.NewRecorder()
+	app.handler.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Errorf("Expected status 200, was %v (%s)", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != origin {
+		t.Errorf("Expected response to allow origin %s, got %q", origin, got)
 	}
 }

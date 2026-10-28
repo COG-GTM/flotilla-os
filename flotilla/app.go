@@ -134,6 +134,7 @@ func (app *App) configureRoutes(ep endpoints) {
 	c := cors.New(cors.Options{
 		AllowedOrigins: app.corsAllowedOrigins,
 		AllowedMethods: []string{"GET", "DELETE", "POST", "PUT"},
+		AllowedHeaders: []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization"},
 	})
 	app.handler = c.Handler(router)
 }
