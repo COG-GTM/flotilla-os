@@ -8,6 +8,8 @@ import (
 
 	"github.com/stitchfix/flotilla-os/config"
 	"github.com/stitchfix/flotilla-os/state"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestRoundCPUMillicores(t *testing.T) {
@@ -102,7 +104,12 @@ type mockConfig struct {
 }
 
 func (m *mockConfig) GetString(key string) string            { return m.values[key] }
-func (m *mockConfig) GetStringSlice(key string) []string     { return nil }
+func (m *mockConfig) GetStringSlice(key string) []string {
+	if v, ok := m.values[key]; ok {
+		return []string{v}
+	}
+	return nil
+}
 func (m *mockConfig) GetStringMapString(key string) map[string]string { return nil }
 func (m *mockConfig) GetInt(key string) int                  { return 0 }
 func (m *mockConfig) GetBool(key string) bool                { return false }
@@ -710,5 +717,75 @@ func TestLakekeeperSecretEnvVarsNotConfigured(t *testing.T) {
 	adapter := &eksAdapter{}
 	if got := adapter.lakekeeperSecretEnvVars(); got != nil {
 		t.Fatalf("env var count = %d, want none when no secret is configured", len(got))
+	}
+}
+
+func hasDockerSocket(mounts []corev1.VolumeMount, volumes []corev1.Volume) bool {
+	for _, v := range volumes {
+		if v.Name == "dockersock" || (v.HostPath != nil && v.HostPath.Path == "/var/run/docker.sock") {
+			return true
+		}
+	}
+	for _, m := range mounts {
+		if m.Name == "dockersock" || m.MountPath == "/var/run/docker.sock" {
+			return true
+		}
+	}
+	return false
+}
+
+func adaptRequiresDockerJob(t *testing.T, allowlist string, definitionID string) batchv1.Job {
+	t.Helper()
+	values := map[string]string{}
+	if allowlist != "" {
+		values[state.DockerSocketAllowlistKey] = allowlist
+	}
+	adapter, err := NewEKSAdapter(&mockConfig{values: values}, &mockLogger{})
+	if err != nil {
+		t.Fatalf("Failed to create adapter: %v", err)
+	}
+	cmd := "echo hi"
+	run := state.Run{
+		RunID:          "run-docker",
+		DefinitionID:   definitionID,
+		ExecutableID:   &definitionID,
+		Image:          "attacker/image:latest",
+		Command:        &cmd,
+		RequiresDocker: true,
+	}
+	executable := &mockExecutable{
+		executableID: definitionID,
+		resources:    &state.ExecutableResources{Memory: int64Ptr(512), Cpu: int64Ptr(256)},
+	}
+	job, err := adapter.AdaptFlotillaDefinitionAndRunToJob(context.Background(), executable, run, "default-scheduler", &mockStateManager{}, false, state.Capabilities{})
+	if err != nil {
+		t.Fatalf("AdaptFlotillaDefinitionAndRunToJob: %v", err)
+	}
+	return job
+}
+
+func TestAdaptJob_RequiresDockerNotAllowlisted_NoDockerSocket(t *testing.T) {
+	for _, allowlist := range []string{"", "other-def, another-def"} {
+		job := adaptRequiresDockerJob(t, allowlist, "mallory-def")
+		spec := job.Spec.Template.Spec
+		if hasDockerSocket(spec.Containers[0].VolumeMounts, spec.Volumes) {
+			t.Errorf("allowlist %q: job for non-allowlisted definition mounts the Docker socket", allowlist)
+		}
+	}
+}
+
+func TestAdaptJob_RequiresDockerAllowlisted_MountsDockerSocket(t *testing.T) {
+	job := adaptRequiresDockerJob(t, "other-def, trusted-def", "trusted-def")
+	spec := job.Spec.Template.Spec
+	if !hasDockerSocket(spec.Containers[0].VolumeMounts, spec.Volumes) {
+		t.Errorf("job for allowlisted definition should mount the Docker socket")
+	}
+}
+
+func TestConstructVolumeMounts_RequiresDockerFalse_NoDockerSocket(t *testing.T) {
+	adapter := &eksAdapter{dockerSocketAllowlist: state.DockerSocketAllowlist{"trusted-def": {}}}
+	mounts, volumes := adapter.constructVolumeMounts(context.Background(), nil, state.Run{DefinitionID: "trusted-def"}, nil, false)
+	if hasDockerSocket(mounts, volumes) {
+		t.Errorf("Docker socket mounted without requires_docker")
 	}
 }

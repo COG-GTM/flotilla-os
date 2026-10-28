@@ -82,7 +82,7 @@ func NewApp(conf config.Config,
 	if err != nil {
 		return app, errors.Wrap(err, "problem initializing worker service")
 	}
-	definitionService, err := services.NewDefinitionService(stateManager)
+	definitionService, err := services.NewDefinitionService(conf, stateManager)
 	if err != nil {
 		return app, errors.Wrap(err, "problem initializing definition service")
 	}

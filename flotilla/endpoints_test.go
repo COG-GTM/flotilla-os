@@ -43,7 +43,7 @@ func setUp(t *testing.T) *muxtrace.Router {
 		Groups: []string{"g1", "g2", "g3"},
 		Tags:   []string{"t1", "t2", "t3"},
 	}
-	ds, _ := services.NewDefinitionService(&imp)
+	ds, _ := services.NewDefinitionService(c, &imp)
 	es, _ := services.NewExecutionService(c, &imp, &imp, &imp, &imp)
 	ls, _ := services.NewLogService(&imp, &imp)
 	mwc, _ := middleware.NewClient()
@@ -78,6 +78,20 @@ func TestEndpoints_CreateDefinition(t *testing.T) {
 
 	if len(r.DefinitionID) == 0 {
 		t.Errorf("Expected non-empty definition id")
+	}
+}
+
+func TestEndpoints_CreateDefinitionRejectsRequiresDocker(t *testing.T) {
+	router := setUp(t)
+
+	newDef := `{"alias":"mallory", "group_name":"mallory", "image":"attacker/image", "command":"id", "requires_docker":true}`
+	req := httptest.NewRequest("POST", "/api/v6/task", bytes.NewBufferString(newDef))
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if resp := w.Result(); resp.StatusCode != 400 {
+		t.Errorf("Expected status 400 for requires_docker, was %v", resp.StatusCode)
 	}
 }
 

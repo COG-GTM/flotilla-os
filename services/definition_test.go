@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"github.com/stitchfix/flotilla-os/exceptions"
 	"github.com/stitchfix/flotilla-os/state"
 	"github.com/stitchfix/flotilla-os/testutils"
 	"testing"
@@ -24,7 +25,7 @@ func setUpDefinitionServiceTest(t *testing.T) (DefinitionService, *testutils.Imp
 			"B": "b/",
 		},
 	}
-	ds, _ := NewDefinitionService(&imp)
+	ds, _ := NewDefinitionService(nil, &imp)
 	return ds, &imp
 }
 
@@ -119,5 +120,45 @@ func TestDefinitionService_Delete(t *testing.T) {
 		if expected[i] != call {
 			t.Errorf("Expected call %v to be %s but was %s", i, expected[i], call)
 		}
+	}
+}
+
+func TestDefinitionService_CreateRejectsRequiresDocker(t *testing.T) {
+	ds, imp := setUpDefinitionServiceTest(t)
+	def := state.Definition{
+		Alias:          "mallory",
+		GroupName:      "mallory",
+		RequiresDocker: true,
+		ExecutableResources: state.ExecutableResources{
+			Image: "attacker/image:latest",
+		},
+	}
+
+	_, err := ds.Create(context.Background(), &def)
+	if _, ok := err.(exceptions.MalformedInput); !ok {
+		t.Fatalf("Expected MalformedInput for requires_docker, got %v", err)
+	}
+	for _, call := range imp.Calls {
+		if call == "CreateDefinition" {
+			t.Errorf("Definition with requires_docker was persisted")
+		}
+	}
+}
+
+func TestDefinitionService_UpdateRejectsRequiresDockerUnlessAllowlisted(t *testing.T) {
+	ds, imp := setUpDefinitionServiceTest(t)
+	_, err := ds.Update(context.Background(), "A", state.Definition{RequiresDocker: true})
+	if _, ok := err.(exceptions.MalformedInput); !ok {
+		t.Fatalf("Expected MalformedInput for requires_docker, got %v", err)
+	}
+	for _, call := range imp.Calls {
+		if call == "UpdateDefinition" {
+			t.Errorf("Update with requires_docker was persisted for a non-allowlisted definition")
+		}
+	}
+
+	allowed := definitionService{sm: imp, dockerSocketAllowlist: state.DockerSocketAllowlist{"B": {}}}
+	if _, err := allowed.Update(context.Background(), "B", state.Definition{RequiresDocker: true}); err != nil {
+		t.Errorf("Expected update of allowlisted definition to succeed, got %v", err)
 	}
 }

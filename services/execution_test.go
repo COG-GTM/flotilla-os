@@ -1011,3 +1011,40 @@ func TestExecutionService_SparkNullDescriptionNullHash(t *testing.T) {
 		t.Errorf("Expected NULL command_hash for Spark job with NULL description, got '%s'", *run.CommandHash)
 	}
 }
+
+func TestExecutionService_RequiresDockerOnlyForAllowlistedDefinitions(t *testing.T) {
+	ctx := context.Background()
+	es, imp := setUp(t)
+	imp.Definitions["D"] = state.Definition{DefinitionID: "D", Alias: "aliasD", RequiresDocker: true}
+	imp.Definitions["E"] = state.Definition{DefinitionID: "E", Alias: "aliasE", RequiresDocker: true}
+	es.(*executionService).dockerSocketAllowlist = state.DockerSocketAllowlist{"E": {}}
+
+	cmd := "echo hi"
+	engine := state.DefaultEngine
+	newReq := func() *state.DefinitionExecutionRequest {
+		return &state.DefinitionExecutionRequest{
+			ExecutionRequestCommon: &state.ExecutionRequestCommon{
+				ClusterName: "clusta",
+				OwnerID:     "somebody",
+				Command:     &cmd,
+				Engine:      &engine,
+			},
+		}
+	}
+
+	run, err := es.CreateDefinitionRunByDefinitionID(ctx, "D", newReq())
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if run.RequiresDocker {
+		t.Errorf("Expected requires_docker to be dropped for non-allowlisted definition D")
+	}
+
+	run, err = es.CreateDefinitionRunByDefinitionID(ctx, "E", newReq())
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if !run.RequiresDocker {
+		t.Errorf("Expected requires_docker to be kept for allowlisted definition E")
+	}
+}

@@ -25,16 +25,18 @@ type EKSAdapter interface {
 	AdaptFlotillaDefinitionAndRunToJob(ctx context.Context, executable state.Executable, run state.Run, schedulerName string, manager state.Manager, araEnabled bool, capabilities state.Capabilities) (batchv1.Job, error)
 }
 type eksAdapter struct {
-	logger               flotillaLog.Logger
-	lakekeeperSecretName string
+	logger                flotillaLog.Logger
+	lakekeeperSecretName  string
+	dockerSocketAllowlist state.DockerSocketAllowlist
 }
 
 // NewEKSAdapter configures and returns an eks adapter for translating
 // from EKS api specific objects to our representation
 func NewEKSAdapter(conf config.Config, logger flotillaLog.Logger) (EKSAdapter, error) {
 	adapter := eksAdapter{
-		logger:               logger,
-		lakekeeperSecretName: conf.GetString("eks_lakekeeper_secret_name"),
+		logger:                logger,
+		lakekeeperSecretName:  conf.GetString("eks_lakekeeper_secret_name"),
+		dockerSocketAllowlist: state.NewDockerSocketAllowlist(conf),
 	}
 	return &adapter, nil
 }
@@ -400,7 +402,12 @@ func (a *eksAdapter) constructVolumeMounts(ctx context.Context, executable state
 		emptyDir := corev1.EmptyDirVolumeSource{Medium: "Memory", SizeLimit: &sharedLimit}
 		volumes[0] = corev1.Volume{Name: "shared-memory", VolumeSource: corev1.VolumeSource{EmptyDir: &emptyDir}}
 	}
-	if run.RequiresDocker {
+	if run.RequiresDocker && !a.dockerSocketAllowlist.Permits(run.DefinitionID) {
+		if a.logger != nil {
+			_ = a.logger.Log("level", "warn", "message", "requires_docker ignored: definition not in "+state.DockerSocketAllowlistKey,
+				"run_id", run.RunID, "definition_id", run.DefinitionID)
+		}
+	} else if run.RequiresDocker {
 		volumes = append(volumes, corev1.Volume{
 			Name: "dockersock",
 			VolumeSource: corev1.VolumeSource{

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"github.com/stitchfix/flotilla-os/config"
 	"github.com/stitchfix/flotilla-os/exceptions"
 	"github.com/stitchfix/flotilla-os/state"
 	"strings"
@@ -29,14 +30,15 @@ type DefinitionService interface {
 }
 
 type definitionService struct {
-	sm state.Manager
+	sm                    state.Manager
+	dockerSocketAllowlist state.DockerSocketAllowlist
 }
 
 //
 // NewDefinitionService configures and returns a DefinitionService
 //
-func NewDefinitionService(stateManager state.Manager) (DefinitionService, error) {
-	ds := definitionService{sm: stateManager}
+func NewDefinitionService(conf config.Config, stateManager state.Manager) (DefinitionService, error) {
+	ds := definitionService{sm: stateManager, dockerSocketAllowlist: state.NewDockerSocketAllowlist(conf)}
 	return &ds, nil
 }
 
@@ -49,6 +51,10 @@ func NewDefinitionService(stateManager state.Manager) (DefinitionService, error)
 func (ds *definitionService) Create(ctx context.Context, definition *state.Definition) (state.Definition, error) {
 	if valid, reasons := definition.IsValid(); !valid {
 		return state.Definition{}, exceptions.MalformedInput{strings.Join(reasons, "\n")}
+	}
+	// New definition ids are generated below, so they can never be allowlisted yet.
+	if definition.RequiresDocker {
+		return state.Definition{}, requiresDockerNotPermitted("")
 	}
 
 	exists, err := ds.aliasExists(ctx, definition.Alias)
@@ -67,6 +73,12 @@ func (ds *definitionService) Create(ctx context.Context, definition *state.Defin
 	}
 	definition.DefinitionID = definitionID
 	return *definition, ds.sm.CreateDefinition(ctx, *definition)
+}
+
+func requiresDockerNotPermitted(definitionID string) error {
+	return exceptions.MalformedInput{ErrorString: fmt.Sprintf(
+		"[requires_docker] is not permitted for definition [%s]; an operator must add the definition id to %s",
+		definitionID, state.DockerSocketAllowlistKey)}
 }
 
 func (ds *definitionService) aliasExists(ctx context.Context, alias string) (bool, error) {
@@ -111,6 +123,9 @@ func (ds *definitionService) Update(ctx context.Context, definitionID string, up
 		return definition, err
 	}
 
+	if updates.RequiresDocker && !ds.dockerSocketAllowlist.Permits(definition.DefinitionID) {
+		return state.Definition{}, requiresDockerNotPermitted(definition.DefinitionID)
+	}
 	definition.UpdateWith(updates)
 	return ds.sm.UpdateDefinition(ctx, definitionID, definition)
 }
