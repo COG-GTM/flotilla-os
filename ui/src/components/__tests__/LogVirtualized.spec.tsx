@@ -1,5 +1,5 @@
-import * as React from "react"
-import { mount, shallow } from "enzyme"
+import { Colors } from "@blueprintjs/core"
+import { render, screen, userEvent } from "../../test-utils"
 import { LogVirtualized, Props } from "../LogVirtualized"
 
 const defaultProps: Props = {
@@ -7,9 +7,10 @@ const defaultProps: Props = {
   height: 100,
   logs: ["a", "b", "c", "d"],
   shouldAutoscroll: true,
-  dispatch: jest.fn(),
+  dispatch: vi.fn(),
   hasRunFinished: false,
   hasLogs: true,
+  isLogRequestIntervalActive: true,
   settings: {
     USE_OPTIMIZED_LOG_RENDERER: true,
     SHOULD_OVERRIDE_CMD_F_IN_RUN_VIEW: true,
@@ -17,93 +18,109 @@ const defaultProps: Props = {
 }
 
 describe("LogVirtualized", () => {
-  it("scrolls to the most recent line upon mounting", () => {
-    const scrollTo = LogVirtualized.prototype.scrollTo
-    LogVirtualized.prototype.scrollTo = jest.fn()
-
-    expect(LogVirtualized.prototype.scrollTo).toHaveBeenCalledTimes(0)
-
-    // Mount LogVirtualized with shouldAutoscroll === true.
-    shallow(<LogVirtualized {...defaultProps} />)
-
-    expect(LogVirtualized.prototype.scrollTo).toHaveBeenCalledTimes(1)
-
-    // Mount LogVirtualized with shouldAutoscroll === false.
-    shallow(<LogVirtualized {...defaultProps} shouldAutoscroll={false} />)
-
-    expect(LogVirtualized.prototype.scrollTo).toHaveBeenCalledTimes(1)
-    LogVirtualized.prototype.scrollTo = scrollTo
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
-  it("calls this.handleCursorChange if state.searchCursor is updated", () => {
-    const handleCursorChange = LogVirtualized.prototype.handleCursorChange
-    LogVirtualized.prototype.handleCursorChange = jest.fn()
-    expect(LogVirtualized.prototype.handleCursorChange).toHaveBeenCalledTimes(0)
-    const wrapper = mount(<LogVirtualized {...defaultProps} />)
-    wrapper.setState({ searchCursor: 10 })
-    expect(LogVirtualized.prototype.handleCursorChange).toHaveBeenCalledTimes(1)
-    LogVirtualized.prototype.handleCursorChange = handleCursorChange
+  it("scrolls to the most recent line upon mounting", () => {
+    const scrollTo = vi.spyOn(LogVirtualized.prototype, "scrollTo")
+    expect(scrollTo).toHaveBeenCalledTimes(0)
+
+    // Mount LogVirtualized with shouldAutoscroll === true.
+    const { unmount } = render(<LogVirtualized {...defaultProps} />)
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+    expect(scrollTo).toHaveBeenLastCalledWith(defaultProps.logs.length, "end")
+    unmount()
+
+    // Mount LogVirtualized with shouldAutoscroll === false.
+    render(<LogVirtualized {...defaultProps} shouldAutoscroll={false} />)
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+  })
+
+  it("calls this.handleCursorChange if state.searchCursor is updated", async () => {
+    const user = userEvent.setup()
+    const handleCursorChange = vi.spyOn(
+      LogVirtualized.prototype,
+      "handleCursorChange"
+    )
+    render(<LogVirtualized {...defaultProps} logs={["ab", "ac", "ad"]} />)
+    expect(handleCursorChange).toHaveBeenCalledTimes(0)
+
+    // Searching sets the query and resets the cursor.
+    await user.type(screen.getByPlaceholderText("Search..."), "a")
+    expect(handleCursorChange).toHaveBeenCalledTimes(1)
+
+    // Moving to the next match updates the cursor.
+    const [, next] = screen.getAllByRole("button")
+    await user.click(next)
+    expect(handleCursorChange).toHaveBeenCalledTimes(2)
   })
 
   it("scrolls to the most recent line if the number of lines is different", () => {
-    const scrollTo = LogVirtualized.prototype.scrollTo
-    LogVirtualized.prototype.scrollTo = jest.fn()
-    const wrapper = mount(<LogVirtualized {...defaultProps} />)
-    expect(LogVirtualized.prototype.scrollTo).toHaveBeenCalledTimes(1)
-    wrapper.setProps({ logs: ["a", "b", "c", "d", "e", "f"] })
-    expect(LogVirtualized.prototype.scrollTo).toHaveBeenCalledTimes(2)
-    LogVirtualized.prototype.scrollTo = scrollTo
+    const scrollTo = vi.spyOn(LogVirtualized.prototype, "scrollTo")
+    const { rerender } = render(<LogVirtualized {...defaultProps} />)
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+
+    const logs = ["a", "b", "c", "d", "e", "f"]
+    rerender(<LogVirtualized {...defaultProps} logs={logs} />)
+    expect(scrollTo).toHaveBeenCalledTimes(2)
+    expect(scrollTo).toHaveBeenLastCalledWith(logs.length, "end")
   })
 
-  it("handles search correctly", () => {
+  it("handles search correctly", async () => {
+    const user = userEvent.setup()
     const logs = ["one two three", "four five six", "seven eight nine"]
-    const wrapper = mount<LogVirtualized>(
-      <LogVirtualized {...defaultProps} logs={logs} />
-    )
-    expect(wrapper.state().searchMatches).toEqual([])
-    expect(wrapper.state().searchCursor).toEqual(0)
-    let query = "s"
-    wrapper.instance().search(query)
-    expect(wrapper.state().searchMatches).toEqual([
-      [1, logs[1].indexOf(query)],
-      [2, logs[2].indexOf(query)],
-    ])
-    expect(wrapper.state().searchCursor).toEqual(0)
+    render(<LogVirtualized {...defaultProps} logs={logs} />)
+    const input = screen.getByPlaceholderText("Search...")
 
-    query = "seven"
-    wrapper.instance().search(query)
-    expect(wrapper.state().searchMatches).toEqual([[2, logs[2].indexOf(query)]])
-    expect(wrapper.state().searchCursor).toEqual(0)
+    // No matches before searching.
+    expect(screen.queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument()
+
+    // "s" matches lines 1 and 2; the cursor starts on the first match.
+    await user.type(input, "s")
+    expect(screen.getByText("1/2")).toBeInTheDocument()
+    expect(screen.getByText("four five six").closest("pre")).toHaveStyle({
+      color: Colors.GOLD5,
+    })
+
+    // "seven" only matches line 2.
+    await user.clear(input)
+    await user.type(input, "seven")
+    expect(screen.getByText("1/1")).toBeInTheDocument()
+    expect(screen.getByText("seven eight nine").closest("pre")).toHaveStyle({
+      color: Colors.GOLD5,
+    })
+    expect(
+      screen.getByText("four five six").closest("pre")
+    ).not.toHaveStyle({ color: Colors.GOLD5 })
   })
 
-  it("handles cursor changes correctly", () => {
-    const scrollTo = LogVirtualized.prototype.scrollTo
-    LogVirtualized.prototype.scrollTo = jest.fn()
-    const fn = LogVirtualized.prototype.scrollTo as jest.Mock
-    const wrapper = mount<LogVirtualized>(<LogVirtualized {...defaultProps} />)
-    const searchMatches: [number, number][] = [
-      [0, 0],
-      [1, 0],
-      [2, 0],
-      [3, 0],
-    ]
+  it("handles cursor changes correctly", async () => {
+    const user = userEvent.setup()
+    const scrollTo = vi.spyOn(LogVirtualized.prototype, "scrollTo")
+    const logs = ["x0", "x1", "x2", "x3"]
+    render(<LogVirtualized {...defaultProps} logs={logs} />)
 
-    wrapper.setState({ searchMatches })
+    // Every line matches "x"; the cursor starts on line 0.
+    await user.type(screen.getByPlaceholderText("Search..."), "x")
+    expect(screen.getByText("1/4")).toBeInTheDocument()
+    expect(scrollTo).toHaveBeenLastCalledWith(0, "center")
 
-    let cursor = 1
-    wrapper.setState({ searchCursor: cursor })
-    expect(fn.mock.calls[fn.mock.calls.length - 1]).toEqual([
-      searchMatches[cursor][0],
-      "center",
-    ])
+    const [prev, next] = screen.getAllByRole("button")
 
-    cursor = 2
-    wrapper.setState({ searchCursor: cursor })
-    expect(fn.mock.calls[fn.mock.calls.length - 1]).toEqual([
-      searchMatches[cursor][0],
-      "center",
-    ])
+    await user.click(next)
+    expect(screen.getByText("2/4")).toBeInTheDocument()
+    expect(scrollTo).toHaveBeenLastCalledWith(1, "center")
 
-    LogVirtualized.prototype.scrollTo = scrollTo
+    await user.click(next)
+    expect(screen.getByText("3/4")).toBeInTheDocument()
+    expect(scrollTo).toHaveBeenLastCalledWith(2, "center")
+
+    // Decrementing from the first match wraps to the last one.
+    await user.click(prev)
+    await user.click(prev)
+    await user.click(prev)
+    expect(screen.getByText("4/4")).toBeInTheDocument()
+    expect(scrollTo).toHaveBeenLastCalledWith(3, "center")
   })
 })

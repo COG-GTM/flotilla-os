@@ -2,7 +2,7 @@ import * as React from "react"
 import Ansi from "ansi-to-react"
 import { get } from "lodash"
 import { ListChildComponentProps } from "react-window"
-import { Pre, Classes, Colors, Tag, Spinner } from "@blueprintjs/core"
+import { Pre, Classes, Colors, Tag, Spinner, SpinnerSize } from "@blueprintjs/core"
 
 const LogVirtualizedRow: React.FC<ListChildComponentProps> = props => {
   const { index, style, data } = props
@@ -24,7 +24,7 @@ const LogVirtualizedRow: React.FC<ListChildComponentProps> = props => {
 
     return (
       <div style={style}>
-        <Spinner size={Spinner.SIZE_SMALL} />
+        <Spinner size={SpinnerSize.SMALL} />
       </div>
     )
   }

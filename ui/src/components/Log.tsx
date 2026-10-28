@@ -1,7 +1,7 @@
 import * as React from "react"
 import { connect, ConnectedProps } from "react-redux"
 import Ansi from "ansi-to-react"
-import { Spinner, Pre, Classes, Tag } from "@blueprintjs/core"
+import { Spinner, SpinnerSize, Pre, Classes, Tag } from "@blueprintjs/core"
 import { RootState } from "../state/store"
 
 const connector = connect((state: RootState) => state.runView)
@@ -55,7 +55,7 @@ class Log extends React.Component<Props> {
     let loader = <Tag>END OF LOGS</Tag>
 
     if (!hasRunFinished || isLoading) {
-      loader = <Spinner size={Spinner.SIZE_SMALL} />
+      loader = <Spinner size={SpinnerSize.SMALL} />
     }
 
     return (
