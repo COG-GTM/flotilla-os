@@ -158,7 +158,18 @@ func TestDefinitionService_UpdateRejectsRequiresDockerUnlessAllowlisted(t *testi
 	}
 
 	allowed := definitionService{sm: imp, dockerSocketAllowlist: state.DockerSocketAllowlist{"B": {}}}
-	if _, err := allowed.Update(context.Background(), "B", state.Definition{RequiresDocker: true}); err != nil {
-		t.Errorf("Expected update of allowlisted definition to succeed, got %v", err)
+	updated, err := allowed.Update(context.Background(), "B", state.Definition{RequiresDocker: true})
+	if err != nil {
+		t.Fatalf("Expected update of allowlisted definition to succeed, got %v", err)
+	}
+	if !updated.RequiresDocker || !imp.Definitions["B"].RequiresDocker {
+		t.Errorf("Expected requires_docker to be persisted for allowlisted definition")
+	}
+
+	if _, err := allowed.Update(context.Background(), "B", state.Definition{Alias: "renamed"}); err != nil {
+		t.Fatalf("Expected partial update to succeed, got %v", err)
+	}
+	if !imp.Definitions["B"].RequiresDocker {
+		t.Errorf("Expected partial update omitting requires_docker to keep it enabled")
 	}
 }
