@@ -220,8 +220,8 @@ func (emr *EMRExecutionEngine) Execute(ctx context.Context, executable state.Exe
 		span.SetTag("error", true)
 		span.SetTag("error.msg", err.Error())
 	} else {
-		span.SetTag("emr.job_id", *run.SparkExtension.EMRJobId)
-		span.SetTag("emr.virtual_cluster_id", *run.SparkExtension.VirtualClusterId)
+		span.SetTag("emr.job_id", aws.StringValue(run.SparkExtension.EMRJobId))
+		span.SetTag("emr.virtual_cluster_id", aws.StringValue(run.SparkExtension.VirtualClusterId))
 		utils.TagJobRun(span, run)
 	}
 	return run, false, nil
