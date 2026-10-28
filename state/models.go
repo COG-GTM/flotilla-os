@@ -14,7 +14,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/Masterminds/sprig"
 	"github.com/aws/aws-sdk-go/aws"
 	uuid "github.com/nu7hatch/gouuid"
 	"github.com/pkg/errors"
@@ -1032,7 +1031,7 @@ func (t Template) GetExecutableCommand(req ExecutionRequest) (string, error) {
 	}
 
 	// Create a new template string based on the template.Template.
-	textTemplate, err := template.New("command").Funcs(sprig.TxtFuncMap()).Parse(t.CommandTemplate)
+	textTemplate, err := ParseCommandTemplate(t.CommandTemplate)
 	if err != nil {
 		return "", err
 	}
@@ -1087,6 +1086,15 @@ func (t *Template) IsValid() (bool, []string) {
 		{len(t.CommandTemplate) == 0, "string [command_template] must be specified"},
 		{len(t.Image) == 0, "string [image] must be specified"},
 		{t.Memory == nil, "int [memory] must be specified"},
+	}
+
+	if len(t.CommandTemplate) > 0 {
+		if _, err := ParseCommandTemplate(t.CommandTemplate); err != nil {
+			conditions = append(conditions, validationCondition{
+				condition: true,
+				reason:    fmt.Sprintf("string [command_template] is invalid: %s", err.Error()),
+			})
+		}
 	}
 
 	valid := true
