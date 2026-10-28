@@ -9,7 +9,7 @@ import App from "./components/App"
 import store from "./state/store"
 import { init } from "./state/settings"
 
-store.dispatch<any>(init())
+store.dispatch(init())
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <Provider store={store}>
