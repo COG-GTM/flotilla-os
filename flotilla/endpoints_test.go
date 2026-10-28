@@ -15,6 +15,10 @@ import (
 )
 
 func setUp(t *testing.T) *muxtrace.Router {
+	return setUpWithAuth(t, &Authenticator{disabled: true})
+}
+
+func setUpWithAuth(t *testing.T, auth *Authenticator) *muxtrace.Router {
 	confDir := "../conf"
 	c, _ := config.NewConfig(&confDir)
 	imp := testutils.ImplementsAllTheThings{
@@ -47,7 +51,7 @@ func setUp(t *testing.T) *muxtrace.Router {
 	es, _ := services.NewExecutionService(c, &imp, &imp, &imp, &imp)
 	ls, _ := services.NewLogService(&imp, &imp)
 	mwc, _ := middleware.NewClient()
-	ep := endpoints{definitionService: ds, executionService: es, eksLogService: ls, middlewareClient: mwc}
+	ep := endpoints{definitionService: ds, executionService: es, eksLogService: ls, middlewareClient: mwc, authenticator: auth}
 	return NewRouter(ep)
 }
 

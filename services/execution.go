@@ -54,23 +54,24 @@ type ExecutionService interface {
 }
 
 type executionService struct {
-	stateManager          state.Manager
-	eksClusterClient      cluster.Client
-	eksExecutionEngine    engine.Engine
-	emrExecutionEngine    engine.Engine
-	reservedEnv           map[string]func(run state.Run) string
-	eksClusterOverride    string
-	eksClusterDefault     string
-	eksTierDefault        string
-	eksGPUClusterOverride string
-	eksGPUClusterDefault  string
-	checkImageValidity    bool
-	baseUri               string
-	spotReAttemptOverride float32
-	eksSpotOverride       bool
-	spotThresholdMinutes  float64
-	terminateJobChannel   chan state.TerminateJob
-	validEksClusters      []string
+	stateManager           state.Manager
+	eksClusterClient       cluster.Client
+	eksExecutionEngine     engine.Engine
+	emrExecutionEngine     engine.Engine
+	reservedEnv            map[string]func(run state.Run) string
+	eksClusterOverride     string
+	eksClusterDefault      string
+	eksTierDefault         string
+	eksGPUClusterOverride  string
+	eksGPUClusterDefault   string
+	checkImageValidity     bool
+	baseUri                string
+	spotReAttemptOverride  float32
+	eksSpotOverride        bool
+	spotThresholdMinutes   float64
+	terminateJobChannel    chan state.TerminateJob
+	validEksClusters       []string
+	allowedServiceAccounts map[string]bool
 	//validEksClusterTiers  string
 }
 
@@ -112,6 +113,8 @@ func NewExecutionService(conf config.Config, eksExecutionEngine engine.Engine, s
 	if !slices.Contains(es.validEksClusters, es.eksClusterDefault) || !slices.Contains(es.validEksClusters, es.eksGPUClusterDefault) {
 		return nil, fmt.Errorf("an invalid cluster has been set as a default\nvalid_clusters:%s\neks_cluster_default:%s\neks_gpu_cluster_default:%s", es.validEksClusters, es.eksClusterDefault, es.eksGPUClusterDefault)
 	}
+
+	es.allowedServiceAccounts = allowedServiceAccounts(conf)
 
 	if conf.IsSet("check_image_validity") {
 		es.checkImageValidity = conf.GetBool("check_image_validity")
@@ -306,6 +309,10 @@ func (es *executionService) constructBaseRunFromExecutable(ctx context.Context, 
 		run state.Run
 		err error
 	)
+
+	if err = es.validateServiceAccount(fields.ServiceAccount); err != nil {
+		return run, err
+	}
 
 	fields.Engine = req.GetExecutionRequestCommon().Engine
 	fields.Tier = es.resolveRequestTier(req.GetExecutionRequestCommon().Tier)
@@ -622,6 +629,36 @@ func (es *executionService) ListClusters(ctx context.Context) ([]state.ClusterMe
 		return nil, err
 	}
 	return clusters, nil
+}
+
+// allowedServiceAccounts returns the operator-approved service accounts a run
+// may request: the configured defaults, the EMR role mapping keys and
+// `eks_allowed_service_accounts`.
+func allowedServiceAccounts(conf config.Config) map[string]bool {
+	allowed := map[string]bool{}
+	add := func(sa string) {
+		if sa = strings.TrimSpace(sa); sa != "" {
+			allowed[sa] = true
+		}
+	}
+	add(conf.GetString("eks_default_service_account"))
+	add(conf.GetString("emr_default_service_account"))
+	for sa := range conf.GetStringMapString("emr_job_role_arn") {
+		add(sa)
+	}
+	for _, v := range conf.GetStringSlice("eks_allowed_service_accounts") {
+		for _, sa := range strings.Split(v, ",") {
+			add(sa)
+		}
+	}
+	return allowed
+}
+
+func (es *executionService) validateServiceAccount(sa *string) error {
+	if sa == nil || len(*sa) == 0 || es.allowedServiceAccounts[*sa] {
+		return nil
+	}
+	return exceptions.MalformedInput{ErrorString: fmt.Sprintf("service_account [%s] is not allowed", *sa)}
 }
 
 func (es *executionService) GetDefaultCluster() string {

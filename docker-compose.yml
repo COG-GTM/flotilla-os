@@ -18,10 +18,12 @@ services:
       DATABASE_URL: postgresql://flotilla:flotilla@db/flotilla?sslmode=disable
       FLOTILLA_MODE: dev
       HTTP_SERVER_CORS_ALLOWED_ORIGINS: http://localhost:5000
+      # Local development only: authentication is disabled and the port is bound to localhost.
+      HTTP_SERVER_AUTH_DISABLED: "true"
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
     ports:
-      - 3000:3000
+      - 127.0.0.1:3000:3000
   db:
     image: postgres
     environment:

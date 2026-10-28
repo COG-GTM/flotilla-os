@@ -227,6 +227,7 @@ The simplest way to deploy for very light usage is to avoid a reverse proxy and 
 	> -----
 	> * Flotilla uses [viper](https://github.com/spf13/viper) for configuration so you can override any of the default configuration under `conf/` using run time environment variables passed to `docker run`
 	> * In most realistic deploys you'll likely want to configure a reverse proxy to sit in front of the flotilla container. See the docs [here](https://hub.docker.com/_/nginx/)
+	> * The API requires authentication. Set `HTTP_SERVER_API_KEYS` (see below) or the server will refuse to start. Clients send `Authorization: Bearer <token>`, so terminate TLS in front of flotilla (for example at the reverse proxy) and never expose the plain HTTP port to untrusted networks.
 
 
 	See [docker run](https://docs.docker.com/engine/reference/run/) for more details
@@ -243,6 +244,9 @@ The variables in `conf/config.yml` are sensible defaults. Most should be left al
 | `http_server_read_timeout_seconds` | Sets read timeout in seconds for the http server |
 | `http_server_write_timeout_seconds` | Sets the write timeout in seconds for the http server |
 | `http_server_listen_address` | The port for the http server to listen on |
+| `http_server_api_keys` | Comma separated `<identity>:<role>:<token>` entries (role is `user` or `operator`). Every API route except `GET /api/v6/health` requires `Authorization: Bearer <token>`. Runs launched with a `user` key are attributed to that key's identity; `operator` keys may set `owner_id` and are required to manage clusters/workers and update run status. Provide via the `HTTP_SERVER_API_KEYS` env var, never commit tokens |
+| `http_server_auth_disabled` | Set to `true` to disable API authentication (local development only; every caller is treated as an operator) |
+| `eks_allowed_service_accounts` | Comma separated service accounts a run may request via `service_account`, in addition to `eks_default_service_account`, `emr_default_service_account` and the `emr_job_role_arn` keys. Other values are rejected with 400 |
 | `owner_id_var` | Which environment variable containing ownership information to inject into the runtime of jobs |
 | `enabled_workers` | This variable is a list of the workers that run. Use this to control what workers run when using a multi-container deployment strategy. Valid list items include (`retry`, `submit`, and `status`) |
 | `metrics_dogstatsd_address` | Statds metrics host in Datadog format |
