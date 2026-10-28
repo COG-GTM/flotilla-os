@@ -11,6 +11,9 @@ import CreateTaskForm from "./CreateTaskForm"
 import ErrorCallout from "./ErrorCallout"
 import { Spinner } from "@blueprintjs/core"
 
+// Keeps the pre-upgrade "" (empty field) fallback for numeric copy-task fields.
+const emptyNumberField = ("" as unknown) as number
+
 export type TaskCtx = ChildProps<TaskShape, { definitionID: string }> & {
   basePath: string
   definitionID: string
@@ -57,8 +60,12 @@ export const Task: React.FunctionComponent<TaskCtx> = props => {
                           env: get(props, ["data", "env"], []),
                           image: get(props, ["data", "image"], ""),
                           group_name: get(props, ["data", "group_name"], ""),
-                          cpu: get(props, ["data", "cpu"], 512),
-                          memory: get(props, ["data", "memory"], 1024),
+                          cpu: get(props, ["data", "cpu"], emptyNumberField),
+                          memory: get(
+                            props,
+                            ["data", "memory"],
+                            emptyNumberField
+                          ),
                           command: get(props, ["data", "command"], ""),
                           tags: get(props, ["data", "tags"], []),
                           alias: "",
